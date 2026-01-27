@@ -2,15 +2,27 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/xrtm-data.svg)](https://pypi.org/project/xrtm-data/)
 
 **The Snapshot Vault for XRTM.**
 
 `xrtm-data` provides the rigid schemas and temporal sandboxing infrastructure required for zero-leakage forecasting. It defines the "Ground Truth" data structures that the rest of the ecosystem (Forecast, Eval, Train) relies on.
 
+## Part of the XRTM Ecosystem
+
+```
+Layer 4: xrtm-train    → (imports all)
+Layer 3: xrtm-forecast → (imports eval, data)
+Layer 2: xrtm-eval     → (imports data)
+Layer 1: xrtm-data     → (zero dependencies) ← YOU ARE HERE
+```
+
+`xrtm-data` is the foundation layer with **zero dependencies** on other xrtm packages.
+
 ## Installation
 
 ```bash
-uv pip install xrtm-data
+pip install xrtm-data
 ```
 
 ## Core Primitives
