@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import pytest
-from datetime import datetime
-from xrtm.data import ForecastOutput, ForecastQuestion, CausalNode, CausalEdge
+
+from xrtm.data import CausalEdge, CausalNode, ForecastOutput
+
 
 def test_forecast_output_initialization():
     """Verify that we can create a valid ForecastOutput object."""
@@ -72,7 +74,7 @@ def test_to_networkx_conversion():
 
     # Check that networkx is handled gracefull if installed
     try:
-        import networkx
+        import networkx  # noqa: F401
         dg = output.to_networkx()
         assert dg.has_edge("n1", "n2")
     except ImportError:

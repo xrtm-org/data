@@ -5,8 +5,8 @@ import json
 import logging
 from typing import List, Optional
 
-from xrtm.data.schemas.forecast import ForecastQuestion
 from xrtm.data.providers.data.base import DataSource
+from xrtm.data.schemas.forecast import ForecastQuestion
 
 logger = logging.getLogger(__name__)
 

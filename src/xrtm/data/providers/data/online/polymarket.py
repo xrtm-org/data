@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from xrtm.data.schemas.forecast import ForecastQuestion, MetadataBase
 from xrtm.data.providers.data.base import DataSource
+from xrtm.data.schemas.forecast import ForecastQuestion, MetadataBase
 
 logger = logging.getLogger(__name__)
 

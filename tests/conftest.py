@@ -1,6 +1,9 @@
-import pytest
 from datetime import datetime, timezone
+
+import pytest
+
 from xrtm.data.schemas.forecast import MetadataBase
+
 
 @pytest.fixture
 def snapshot_time():
