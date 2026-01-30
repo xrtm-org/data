@@ -112,7 +112,7 @@ async def test_caching_behavior(sample_data):
 
     # First call - should load data
     await source.fetch_questions()
-    assert source._data is not None
+    assert source._questions is not None
 
     # Modify file on disk
     with open(sample_data, "w") as f:
