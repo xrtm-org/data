@@ -3,7 +3,7 @@
 
 import json
 import logging
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 from xrtm.data.providers.data.base import DataSource
 from xrtm.data.schemas.forecast import ForecastQuestion
