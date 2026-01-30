@@ -4,6 +4,11 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
+
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
@@ -117,9 +122,7 @@ class ForecastOutput(BaseModel):
         self.probability = value
 
     def to_networkx(self) -> Any:
-        try:
-            import networkx as nx
-        except ImportError:
+        if nx is None:
             raise ImportError("networkx is required for to_networkx(). Install it with 'pip install networkx'.")
         dg = nx.DiGraph()
         for node in self.logical_trace:
