@@ -1,6 +1,7 @@
 ---
-# AGENT CONFIGURATION: xrtm-data NODE
-# IDENTITY: THE TIME MACHINE
+agent_node: xrtm-data
+identity: THE TIME MACHINE
+---
 
 ### 1. [PRIME DIRECTIVES] (Shared Core)
 - **Tech Stack**: Python (3.10+), Pydantic (v2), Polars (for dataframes).
