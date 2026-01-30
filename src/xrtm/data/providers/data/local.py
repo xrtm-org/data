@@ -1,6 +1,7 @@
 # coding=utf-8
 # Copyright 2026 XRTM Team. All rights reserved.
 
+import asyncio
 import json
 import logging
 from typing import List, Optional
@@ -21,7 +22,7 @@ class LocalDataSource(DataSource):
     def __init__(self, file_path: str):
         self.file_path = file_path
 
-    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
+    def _fetch_questions_sync(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         try:
             with open(self.file_path, "r") as f:
                 data = json.load(f)
@@ -38,7 +39,10 @@ class LocalDataSource(DataSource):
             logger.error(f"Failed to read local questions from {self.file_path}: {e}")
             return []
 
-    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
+        return await asyncio.to_thread(self._fetch_questions_sync, query, limit)
+
+    def _get_question_by_id_sync(self, question_id: str) -> Optional[ForecastQuestion]:
         try:
             with open(self.file_path, "r") as f:
                 data = json.load(f)
@@ -50,3 +54,6 @@ class LocalDataSource(DataSource):
         except Exception as e:
             logger.error(f"Failed to retrieve question {question_id} from {self.file_path}: {e}")
             return None
+
+    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+        return await asyncio.to_thread(self._get_question_by_id_sync, question_id)
