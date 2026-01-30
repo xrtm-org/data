@@ -26,6 +26,8 @@ class LocalDataSource(DataSource):
         if self._data is None:
             with open(self.file_path, "r") as f:
                 self._data = json.load(f)
+        if self._data is None:
+            return []
         return self._data
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
