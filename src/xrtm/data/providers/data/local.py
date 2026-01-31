@@ -20,16 +20,11 @@ class LocalDataSource(DataSource):
 
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self._questions: Optional[List[ForecastQuestion]] = None
-        self._question_index: Optional[Dict[str, ForecastQuestion]] = None
+        self._questions: List[ForecastQuestion] = []
+        self._question_index: Dict[str, ForecastQuestion] = {}
+        self._load_data()
 
-    def _ensure_loaded(self) -> None:
-        if self._questions is not None:
-            return
-
-        self._questions = []
-        self._question_index = {}
-
+    def _load_data(self):
         try:
             with open(self.file_path, "r") as f:
                 data = json.load(f)
@@ -49,11 +44,8 @@ class LocalDataSource(DataSource):
             self._question_index = {}
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
-        self._ensure_loaded()
-
-        questions = self._questions or []
         filtered = []
-        for q in questions:
+        for q in self._questions:
             if not query or query.lower() in q.title.lower():
                 filtered.append(q)
 
@@ -62,6 +54,4 @@ class LocalDataSource(DataSource):
         return filtered
 
     async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
-        self._ensure_loaded()
-        index = self._question_index or {}
-        return index.get(question_id)
+        return self._question_index.get(question_id)
