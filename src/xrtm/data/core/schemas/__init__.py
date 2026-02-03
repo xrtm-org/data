@@ -14,27 +14,13 @@
 # limitations under the License.
 
 r"""
-xrtm-data: The Foundation Layer (Layer 1)
+Core data schemas for xrtm-data.
 
-This package provides the core data schemas and interfaces for the xrtm
-ecosystem. It follows the "Zero Leakage" principle, ensuring all data
-is properly timestamped for temporal isolation.
-
-Structure:
-    - core/: Domain-agnostic interfaces and schemas
-    - kit/: High-level processors and utilities
-    - providers/: External data source implementations
-
-Example:
-    >>> from xrtm.data import ForecastQuestion, DataSource
-    >>> from xrtm.data.providers import LocalDataSource
+This module exports all foundational Pydantic models used across the
+xrtm ecosystem for representing forecasting data structures.
 """
 
-# Core interfaces
-from xrtm.data.core import DataSource
-
-# Core schemas (public API)
-from xrtm.data.core.schemas import (
+from xrtm.data.core.schemas.forecast import (
     CausalEdge,
     CausalNode,
     ConfidenceInterval,
@@ -44,9 +30,6 @@ from xrtm.data.core.schemas import (
 )
 
 __all__ = [
-    # Interfaces
-    "DataSource",
-    # Schemas
     "MetadataBase",
     "ForecastQuestion",
     "ForecastOutput",

@@ -47,6 +47,19 @@ prediction = ForecastOutput(
 ### 2. Zero Leakage
 The `MetadataBase` enforces a strict `snapshot_time`. This timestamp represents the "End of History" for the model. Any data point generated after this time is considered "Future Leakage" and is programmatically inaccessible during backtesting.
 
+## Project Structure
+
+```
+src/xrtm/data/
+├── core/            # Interfaces & Schemas (domain-agnostic)
+│   ├── interfaces.py    # DataSource protocol
+│   └── schemas/         # ForecastQuestion, ForecastOutput, etc.
+├── kit/             # Composable utilities (processors)
+└── providers/       # External data source implementations
+    ├── local/           # LocalDataSource (JSON files)
+    └── online/          # PolymarketSource (Gamma API)
+```
+
 ## Development
 
 Prerequisites:
