@@ -1,7 +1,10 @@
-import pytest
-import aiohttp
 from unittest.mock import AsyncMock, MagicMock
+
+import aiohttp
+import pytest
+
 from xrtm.data.providers.data.online.polymarket import PolymarketSource
+
 
 @pytest.mark.asyncio
 async def test_polymarket_session_injection():
