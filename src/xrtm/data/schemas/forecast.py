@@ -17,7 +17,7 @@ class MetadataBase(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     snapshot_time: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Zero Leakage: The specific 'Time T' at which the world state was frozen."
+        description="Zero Leakage: The specific 'Time T' at which the world state was frozen.",
     )
     tags: List[str] = Field(default_factory=list)
     subject_type: Optional[str] = None
@@ -55,6 +55,7 @@ class CausalNode(BaseModel):
     r"""
     Represents a single step in a logical reasoning chain.
     """
+
     event: str = Field(..., description="The assumption or event in the chain")
     probability: Optional[float] = Field(None, ge=0, le=1)
     description: Optional[str] = None
@@ -67,6 +68,7 @@ class CausalEdge(BaseModel):
     r"""
     Represents a directed causal dependency between two reasoning nodes.
     """
+
     source: str
     target: str
     weight: float = Field(default=1.0, ge=0, le=1)
@@ -75,6 +77,7 @@ class CausalEdge(BaseModel):
 
 class ConfidenceInterval(BaseModel):
     r"""Standard range for probabilistic calibration."""
+
     low: float
     high: float
     level: float = 0.9
@@ -84,6 +87,7 @@ class ForecastOutput(BaseModel):
     r"""
     The structured result of an agent's forecasting reasoning, compliant with Governance v1.
     """
+
     question_id: str
     probability: float = Field(
         ...,

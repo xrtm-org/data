@@ -1,4 +1,3 @@
-
 import json
 
 import pytest
@@ -9,29 +8,25 @@ from xrtm.data.providers.data.local import LocalDataSource
 @pytest.fixture
 def sample_data(tmp_path):
     data = [
-        {
-            "id": "q1",
-            "title": "Will it snow?",
-            "description": "Weather forecast",
-            "resolution_criteria": "If it snows"
-        },
+        {"id": "q1", "title": "Will it snow?", "description": "Weather forecast", "resolution_criteria": "If it snows"},
         {
             "id": "q2",
             "title": "Will AI take over?",
             "description": "AGI prediction",
-            "resolution_criteria": "If AI is AGI"
+            "resolution_criteria": "If AI is AGI",
         },
         {
             "id": "q3",
             "title": "Will stock go up?",
             "description": "Market forecast",
-            "resolution_criteria": "If stock > 100"
-        }
+            "resolution_criteria": "If stock > 100",
+        },
     ]
     file_path = tmp_path / "questions.json"
     with open(file_path, "w") as f:
         json.dump(data, f)
     return str(file_path)
+
 
 @pytest.mark.asyncio
 async def test_fetch_questions_all(sample_data):
@@ -42,6 +37,7 @@ async def test_fetch_questions_all(sample_data):
     assert questions[1].id == "q2"
     assert questions[2].id == "q3"
 
+
 @pytest.mark.asyncio
 async def test_fetch_questions_limit(sample_data):
     source = LocalDataSource(sample_data)
@@ -50,6 +46,7 @@ async def test_fetch_questions_limit(sample_data):
     assert questions[0].id == "q1"
     assert questions[1].id == "q2"
 
+
 @pytest.mark.asyncio
 async def test_fetch_questions_query(sample_data):
     source = LocalDataSource(sample_data)
@@ -57,12 +54,14 @@ async def test_fetch_questions_query(sample_data):
     assert len(questions) == 1
     assert questions[0].id == "q2"
 
+
 @pytest.mark.asyncio
 async def test_fetch_questions_query_case_insensitive(sample_data):
     source = LocalDataSource(sample_data)
     questions = await source.fetch_questions(query="ai")
     assert len(questions) == 1
     assert questions[0].id == "q2"
+
 
 @pytest.mark.asyncio
 async def test_get_question_by_id(sample_data):
@@ -72,11 +71,13 @@ async def test_get_question_by_id(sample_data):
     assert q.id == "q2"
     assert q.title == "Will AI take over?"
 
+
 @pytest.mark.asyncio
 async def test_get_question_by_id_not_found(sample_data):
     source = LocalDataSource(sample_data)
     q = await source.get_question_by_id("nonexistent")
     assert q is None
+
 
 @pytest.mark.asyncio
 async def test_file_missing(tmp_path):
@@ -91,6 +92,7 @@ async def test_file_missing(tmp_path):
     q = await source.get_question_by_id("q1")
     assert q is None
 
+
 @pytest.mark.asyncio
 async def test_invalid_json(tmp_path):
     file_path = tmp_path / "invalid.json"
@@ -104,6 +106,7 @@ async def test_invalid_json(tmp_path):
 
     q = await source.get_question_by_id("q1")
     assert q is None
+
 
 @pytest.mark.asyncio
 async def test_caching_behavior(sample_data):
