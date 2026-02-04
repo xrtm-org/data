@@ -2,12 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from xrtm.data.schemas.forecast import MetadataBase
+from xrtm.data.core.schemas.forecast import MetadataBase
 
 
 @pytest.fixture
 def snapshot_time():
     return datetime.now(timezone.utc)
+
 
 @pytest.fixture
 def minimal_metadata(snapshot_time):
