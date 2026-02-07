@@ -28,7 +28,7 @@ Example:
 import asyncio
 import json
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from xrtm.data.core import DataSource
 from xrtm.data.core.schemas import ForecastQuestion
@@ -58,20 +58,44 @@ class LocalDataSource(DataSource):
 
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
-        self._questions: Optional[List[dict]] = None
+        self._questions: Optional[List[ForecastQuestion]] = None
+        self._questions_by_id: Optional[Dict[str, ForecastQuestion]] = None
+
+    def _ensure_data_loaded(self) -> None:
+        r"""Ensure that the local data file is loaded and parsed."""
+        if self._questions is not None:
+            return
+
+        with open(self.file_path, "r") as f:
+            raw_data = json.load(f)
+
+        questions = []
+        questions_by_id = {}
+
+        for item in raw_data:
+            try:
+                q = ForecastQuestion(**item)
+                questions.append(q)
+                questions_by_id[q.id] = q
+            except Exception as e:
+                logger.warning(f"Skipping invalid question in {self.file_path}: {e}")
+                continue
+
+        self._questions = questions
+        self._questions_by_id = questions_by_id
 
     def _fetch_questions_sync(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""Synchronous implementation of question fetching."""
         try:
+            self._ensure_data_loaded()
+
             if self._questions is None:
-                with open(self.file_path, "r") as f:
-                    self._questions = json.load(f)
+                return []
 
             questions = []
-            query_lower = query.lower() if query else None
-            for item in self._questions:
-                if not query_lower or query_lower in item.get("title", "").lower():
-                    questions.append(ForecastQuestion(**item))
+            for q in self._questions:
+                if not query or query.lower() in q.title.lower():
+                    questions.append(q)
 
                 if len(questions) >= limit:
                     break
@@ -96,14 +120,12 @@ class LocalDataSource(DataSource):
     def _get_question_by_id_sync(self, question_id: str) -> Optional[ForecastQuestion]:
         r"""Synchronous implementation of single question retrieval."""
         try:
-            if self._questions is None:
-                with open(self.file_path, "r") as f:
-                    self._questions = json.load(f)
+            self._ensure_data_loaded()
 
-            for item in self._questions:
-                if item.get("id") == question_id:
-                    return ForecastQuestion(**item)
-            return None
+            if self._questions_by_id is None:
+                return None
+
+            return self._questions_by_id.get(question_id)
         except Exception as e:
             logger.error(f"Failed to retrieve question {question_id} from {self.file_path}: {e}")
             return None
