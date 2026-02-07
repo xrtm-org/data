@@ -68,8 +68,9 @@ class LocalDataSource(DataSource):
                     self._questions = json.load(f)
 
             questions = []
+            query_lower = query.lower() if query else None
             for item in self._questions:
-                if not query or query.lower() in item.get("title", "").lower():
+                if not query_lower or query_lower in item.get("title", "").lower():
                     questions.append(ForecastQuestion(**item))
 
                 if len(questions) >= limit:
