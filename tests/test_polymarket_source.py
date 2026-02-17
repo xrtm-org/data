@@ -217,9 +217,9 @@ async def test_error_handling_in_fetch_questions():
     with patch("aiohttp.ClientSession") as MockSession:
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
+        mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        # Make the request fail
+        # Make the request fail - exception will be caught by fetch_questions
         mock_resp = MagicMock()
         mock_resp.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
         mock_resp.__aexit__ = AsyncMock(return_value=False)
