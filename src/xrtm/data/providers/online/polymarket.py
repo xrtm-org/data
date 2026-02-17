@@ -26,6 +26,7 @@ Example:
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -70,6 +71,25 @@ class PolymarketSource(DataSource):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._owns_session and self._session:
             await self._session.close()
+            self._session = None
+
+    def _has_active_session(self) -> bool:
+        """Check if we have an active (non-closed) session."""
+        return self._session is not None and not self._session.closed
+
+    @asynccontextmanager
+    async def _get_session(self):
+        """
+        Async context manager that yields a session.
+
+        If a reusable session exists and is active, yields it.
+        Otherwise, creates a temporary session and closes it on exit.
+        """
+        if self._has_active_session():
+            yield self._session
+        else:
+            async with aiohttp.ClientSession() as session:
+                yield session
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""
@@ -87,23 +107,14 @@ class PolymarketSource(DataSource):
             url += f"&search={query}"
 
         try:
-            if self._session:
-                async with self._session.get(url) as resp:
+            async with self._get_session() as session:
+                async with session.get(url) as resp:
                     if resp.status != 200:
                         logger.error(f"Polymarket API returned status {resp.status}")
                         return []
 
                     data = await resp.json()
                     return [self._normalize(item) for item in data]
-            else:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status != 200:
-                            logger.error(f"Polymarket API returned status {resp.status}")
-                            return []
-
-                        data = await resp.json()
-                        return [self._normalize(item) for item in data]
         except Exception as e:
             logger.error(f"Failed to fetch questions from Polymarket: {e}")
             return []
@@ -120,17 +131,11 @@ class PolymarketSource(DataSource):
         """
         url = f"{self.API_BASE}/events/{question_id}"
         try:
-            if self._session:
-                async with self._session.get(url) as resp:
+            async with self._get_session() as session:
+                async with session.get(url) as resp:
                     if resp.status == 200:
                         return self._normalize(await resp.json())
                     return None
-            else:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status == 200:
-                            return self._normalize(await resp.json())
-                        return None
         except Exception as e:
             logger.error(f"Failed to retrieve Polymarket event {question_id}: {e}")
             return None
