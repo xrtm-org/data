@@ -23,5 +23,6 @@ and CAN import from core/ but MUST NOT import from kit/.
 
 from xrtm.data.providers.local import LocalDataSource
 from xrtm.data.providers.online import PolymarketSource
+from xrtm.data.providers.subgraph import PolymarketTradeSource
 
-__all__ = ["LocalDataSource", "PolymarketSource"]
+__all__ = ["LocalDataSource", "PolymarketSource", "PolymarketTradeSource"]
