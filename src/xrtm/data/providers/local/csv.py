@@ -28,6 +28,7 @@ Example:
 import asyncio
 import json
 import logging
+import threading
 from typing import Dict, List, Optional
 
 from xrtm.data.core import DataSource
@@ -60,29 +61,51 @@ class LocalDataSource(DataSource):
         self.file_path = file_path
         self._questions: Optional[List[ForecastQuestion]] = None
         self._questions_by_id: Optional[Dict[str, ForecastQuestion]] = None
+        self._lock = threading.Lock()
 
     def _ensure_data_loaded(self) -> None:
         r"""Ensure that the local data file is loaded and parsed."""
         if self._questions is not None:
             return
 
-        with open(self.file_path, "r") as f:
-            raw_data = json.load(f)
+        with self._lock:
+            if self._questions is not None:
+                return
 
-        questions = []
-        questions_by_id = {}
+            with open(self.file_path, "r") as f:
+                raw_data = json.load(f)
 
-        for item in raw_data:
-            try:
-                q = ForecastQuestion(**item)
+            if not isinstance(raw_data, list):
+                logger.error("Expected JSON array in %s, but got %s", self.file_path, type(raw_data).__name__)
+                self._questions = []
+                self._questions_by_id = {}
+                return
+
+            questions = []
+            questions_by_id = {}
+
+            for item in raw_data:
+                if not isinstance(item, dict):
+                    logger.warning("Skipping invalid item in %s: expected dict, got %s", self.file_path, type(item).__name__)
+                    continue
+
+                try:
+                    q = ForecastQuestion(**item)
+                except Exception as e:
+                    logger.warning("Skipping invalid question in %s: %s", self.file_path, e)
+                    continue
+
+                if q.id in questions_by_id:
+                    logger.warning(
+                        "Duplicate question id '%s' in %s; keeping first occurrence.", q.id, self.file_path
+                    )
+                    continue
+
                 questions.append(q)
                 questions_by_id[q.id] = q
-            except Exception as e:
-                logger.warning(f"Skipping invalid question in {self.file_path}: {e}")
-                continue
 
-        self._questions = questions
-        self._questions_by_id = questions_by_id
+            self._questions = questions
+            self._questions_by_id = questions_by_id
 
     def _fetch_questions_sync(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""Synchronous implementation of question fetching."""
@@ -92,10 +115,12 @@ class LocalDataSource(DataSource):
             if self._questions is None:
                 return []
 
+            query_lower = query.lower() if query else None
             questions = []
+
             for q in self._questions:
-                if not query or query.lower() in q.title.lower():
-                    questions.append(q)
+                if not query_lower or query_lower in q.title.lower():
+                    questions.append(q.model_copy())
 
                 if len(questions) >= limit:
                     break
@@ -125,7 +150,8 @@ class LocalDataSource(DataSource):
             if self._questions_by_id is None:
                 return None
 
-            return self._questions_by_id.get(question_id)
+            q = self._questions_by_id.get(question_id)
+            return q.model_copy() if q else None
         except Exception as e:
             logger.error(f"Failed to retrieve question {question_id} from {self.file_path}: {e}")
             return None

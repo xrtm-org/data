@@ -124,3 +124,81 @@ async def test_caching_behavior(sample_data):
     # Second call - should still return original data because it's cached
     questions = await source.fetch_questions()
     assert len(questions) == 3
+
+
+@pytest.mark.asyncio
+async def test_mixed_invalid_data(tmp_path):
+    """Verify that invalid items are skipped and valid ones are loaded."""
+    data = [
+        {"id": "q1", "title": "Valid Q1"},
+        {"id": "q2", "title": "Missing fields"},  # Might be valid depending on schema, but let's assume valid enough or make it invalid
+        "not a dict",
+        {"id": "q3", "title": "Valid Q3"},
+        {"invalid": "schema"},  # Missing required fields
+    ]
+    # ForecastQuestion requires id and title.
+
+    file_path = tmp_path / "mixed.json"
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
+    source = LocalDataSource(str(file_path))
+    questions = await source.fetch_questions()
+
+    # "Missing fields" (q2) has id and title, so it is valid.
+    # "not a dict" should be skipped.
+    # {"invalid": "schema"} missing id/title, should be skipped.
+
+    assert len(questions) == 3
+    ids = {q.id for q in questions}
+    assert ids == {"q1", "q2", "q3"}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ids(tmp_path):
+    """Verify that the first occurrence of a duplicate ID is kept."""
+    data = [
+        {"id": "q1", "title": "First"},
+        {"id": "q1", "title": "Second"},
+    ]
+    file_path = tmp_path / "dupes.json"
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
+    source = LocalDataSource(str(file_path))
+    q = await source.get_question_by_id("q1")
+
+    assert q is not None
+    assert q.title == "First"
+
+
+@pytest.mark.asyncio
+async def test_malformed_json_structure(tmp_path):
+    """Verify that a non-list JSON root is handled gracefully."""
+    data = {"questions": []}
+    file_path = tmp_path / "dict_root.json"
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
+    source = LocalDataSource(str(file_path))
+    questions = await source.fetch_questions()
+
+    assert questions == []
+
+@pytest.mark.asyncio
+async def test_returned_objects_are_copies(sample_data):
+    """Verify that returned objects are copies and mutation doesn't affect cache."""
+    source = LocalDataSource(sample_data)
+
+    # Fetch a question
+    q1 = await source.get_question_by_id("q1")
+    assert q1 is not None
+    original_title = q1.title
+
+    # Mutate it
+    q1.title = "Mutated Title"
+
+    # Fetch it again
+    q2 = await source.get_question_by_id("q1")
+    assert q2.title == original_title
+    assert q2.title != q1.title
