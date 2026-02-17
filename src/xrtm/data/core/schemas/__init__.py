@@ -14,10 +14,9 @@
 # limitations under the License.
 
 r"""
-Core data schemas for xrtm-data.
+Core schemas for xrtm-data.
 
-This module exports all foundational Pydantic models used across the
-xrtm ecosystem for representing forecasting data structures.
+This module exports all Pydantic schemas used across the xrtm ecosystem.
 """
 
 from xrtm.data.core.schemas.forecast import (
@@ -28,12 +27,21 @@ from xrtm.data.core.schemas.forecast import (
     ForecastQuestion,
     MetadataBase,
 )
+from xrtm.data.core.schemas.prior import BetaPrior, PriorState
+from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
 
 __all__ = [
+    # Forecast schemas
     "MetadataBase",
     "ForecastQuestion",
     "ForecastOutput",
     "CausalNode",
     "CausalEdge",
     "ConfidenceInterval",
+    # Prior schemas
+    "BetaPrior",
+    "PriorState",
+    # Trade schemas
+    "TradeEvent",
+    "TradeWindow",
 ]

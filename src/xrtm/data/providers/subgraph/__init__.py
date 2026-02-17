@@ -14,20 +14,12 @@
 # limitations under the License.
 
 r"""
-Kit module for xrtm-data.
+Subgraph data providers for xrtm-data.
 
-This module provides data processing utilities and processors
-for the xrtm ecosystem.
+This module provides adapters for blockchain subgraph APIs,
+specifically the Polymarket Goldsky subgraph for trade events.
 """
 
-from xrtm.data.kit.processors import (
-    fit_beta_exponential_decay,
-    fit_beta_from_trades,
-    fit_beta_from_window,
-)
+from xrtm.data.providers.subgraph.polymarket import PolymarketTradeSource
 
-__all__ = [
-    "fit_beta_from_trades",
-    "fit_beta_from_window",
-    "fit_beta_exponential_decay",
-]
+__all__ = ["PolymarketTradeSource"]
