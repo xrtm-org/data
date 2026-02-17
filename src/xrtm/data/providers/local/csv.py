@@ -126,7 +126,7 @@ class LocalDataSource(DataSource):
                     break
             return questions
         except Exception as e:
-            logger.error(f"Failed to read local questions from {self.file_path}: {e}")
+            logger.error("Failed to read local questions from %s: %s", self.file_path, e)
             return []
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
@@ -153,7 +153,7 @@ class LocalDataSource(DataSource):
             q = self._questions_by_id.get(question_id)
             return q.model_copy() if q else None
         except Exception as e:
-            logger.error(f"Failed to retrieve question {question_id} from {self.file_path}: {e}")
+            logger.error("Failed to retrieve question %s from %s: %s", question_id, self.file_path, e)
             return None
 
     async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
