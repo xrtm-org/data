@@ -227,15 +227,17 @@ class ForecastOutput(BaseModel):
         except ImportError:
             raise ImportError("networkx is required for to_networkx(). Install it with 'uv add networkx'.")
         dg = nx.DiGraph()
-        for node in self.logical_trace:
-            dg.add_node(
+        dg.add_nodes_from(
+            (
                 node.node_id,
-                event=node.event,
-                probability=node.probability,
-                description=node.description,
+                {"event": node.event, "probability": node.probability, "description": node.description},
             )
-        for edge in self.logical_edges:
-            dg.add_edge(edge.source, edge.target, weight=edge.weight, description=edge.description)
+            for node in self.logical_trace
+        )
+        dg.add_edges_from(
+            (edge.source, edge.target, {"weight": edge.weight, "description": edge.description})
+            for edge in self.logical_edges
+        )
         return dg
 
 

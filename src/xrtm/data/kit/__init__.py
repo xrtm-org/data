@@ -14,14 +14,20 @@
 # limitations under the License.
 
 r"""
-Researcher Kit for xrtm-data.
+Kit module for xrtm-data.
 
-This module provides high-level, composable utilities built on top of
-the core interfaces. Kit components use abstractions from core/ and
-MUST NOT import from providers/.
-
-Currently empty - will be populated with data processors (e.g., Beta fitters)
-during the training logic implementation phase.
+This module provides data processing utilities and processors
+for the xrtm ecosystem.
 """
 
-__all__: list[str] = []
+from xrtm.data.kit.processors import (
+    fit_beta_exponential_decay,
+    fit_beta_from_trades,
+    fit_beta_from_window,
+)
+
+__all__ = [
+    "fit_beta_from_trades",
+    "fit_beta_from_window",
+    "fit_beta_exponential_decay",
+]

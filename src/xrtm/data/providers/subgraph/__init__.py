@@ -14,15 +14,12 @@
 # limitations under the License.
 
 r"""
-Version information for xrtm-data.
+Subgraph data providers for xrtm-data.
 
-This module provides the single source of truth for the package version.
+This module provides adapters for blockchain subgraph APIs,
+specifically the Polymarket Goldsky subgraph for trade events.
 """
 
-__all__ = ["__version__", "__author__", "__contact__", "__license__", "__copyright__"]
+from xrtm.data.providers.subgraph.polymarket import PolymarketTradeSource
 
-__version__ = "0.2.1"
-__author__ = "XRTM Team"
-__contact__ = "moy@xrtm.org"
-__license__ = "Apache-2.0"
-__copyright__ = "Copyright 2026 XRTM Team"
+__all__ = ["PolymarketTradeSource"]
