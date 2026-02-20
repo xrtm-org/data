@@ -21,12 +21,13 @@ questions from the Polymarket Gamma API.
 
 Example:
     >>> from xrtm.data.providers.online import PolymarketSource
-    >>> source = PolymarketSource()
-    >>> questions = await source.fetch_questions(query="election", limit=5)
+    >>> async with PolymarketSource() as source:
+    ...     questions = await source.fetch_questions(query="election", limit=5)
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import aiohttp
 
@@ -50,12 +51,50 @@ class PolymarketSource(DataSource):
         API_BASE: Base URL for the Polymarket Gamma API.
 
     Example:
-        >>> source = PolymarketSource()
-        >>> questions = await source.fetch_questions(limit=10)
-        >>> print(f"Fetched {len(questions)} questions")
+        >>> async with PolymarketSource() as source:
+        ...     questions = await source.fetch_questions(limit=10)
+        ...     print(f"Fetched {len(questions)} questions")
     """
 
     API_BASE = "https://gamma-api.polymarket.com"
+
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None):
+        r"""
+        Initialize the Polymarket source.
+
+        Args:
+            session: Optional existing aiohttp session to reuse.
+        """
+        self._session = session
+        self._own_session = False
+
+    async def __aenter__(self) -> "PolymarketSource":
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+            self._own_session = True
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._own_session and self._session:
+            await self._session.close()
+        # Strictly set to None to prevent reuse as per guidelines
+        if self._own_session:
+            self._session = None
+
+    @asynccontextmanager
+    async def _get_session(self) -> AsyncGenerator[aiohttp.ClientSession, None]:
+        r"""
+        Get a valid session for making requests.
+
+        If the instance has an active session (via context manager or init),
+        it yields that session. Otherwise, it creates a temporary session
+        for the duration of the context block.
+        """
+        if self._session:
+            yield self._session
+        else:
+            async with aiohttp.ClientSession() as session:
+                yield session
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""
@@ -73,7 +112,7 @@ class PolymarketSource(DataSource):
             url += f"&search={query}"
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         logger.error(f"Polymarket API returned status {resp.status}")
@@ -100,7 +139,7 @@ class PolymarketSource(DataSource):
         """
         url = f"{self.API_BASE}/events/{question_id}"
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         return self._normalize(await resp.json())
