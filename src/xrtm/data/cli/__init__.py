@@ -292,13 +292,13 @@ def _load_trades(path: Path) -> list:
         df = table.to_pandas()
         return [
             TradeEvent(
-                price=row["price"],
-                amount=row["amount"],
-                timestamp=datetime.fromisoformat(row["timestamp"]),
-                maker=row["maker"],
-                taker=row["taker"],
+                price=row.price,
+                amount=row.amount,
+                timestamp=datetime.fromisoformat(row.timestamp),
+                maker=row.maker,
+                taker=row.taker,
             )
-            for _, row in df.iterrows()
+            for row in df.itertuples(index=False)
         ]
     else:
         with open(path) as f:
