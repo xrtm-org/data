@@ -26,6 +26,7 @@ Example:
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -57,6 +58,45 @@ class PolymarketSource(DataSource):
 
     API_BASE = "https://gamma-api.polymarket.com"
 
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None, *args, **kwargs):
+        """
+        Initialize the Polymarket source.
+
+        Args:
+            session: Optional existing aiohttp session to reuse.
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+        super().__init__(*args, **kwargs)
+        self._session = session
+        self._own_session = False
+
+    async def __aenter__(self):
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+            self._own_session = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._own_session and self._session:
+            await self._session.close()
+            # Strictly set self._session to None to prevent reuse
+            self._session = None
+
+    def _get_session_context(self):
+        """
+        Get the current session context or create a temporary one.
+        """
+        if self._session:
+
+            @asynccontextmanager
+            async def _shared_session():
+                yield self._session
+
+            return _shared_session()
+        else:
+            return aiohttp.ClientSession()
+
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""
         Fetch active forecast questions from Polymarket.
@@ -73,7 +113,7 @@ class PolymarketSource(DataSource):
             url += f"&search={query}"
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session_context() as session:
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         logger.error(f"Polymarket API returned status {resp.status}")
@@ -100,7 +140,7 @@ class PolymarketSource(DataSource):
         """
         url = f"{self.API_BASE}/events/{question_id}"
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session_context() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         return self._normalize(await resp.json())
