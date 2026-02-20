@@ -79,8 +79,13 @@ def fit_beta_from_trades(
     if not trades:
         return BetaPrior.uniform()
 
-    total_yes = sum(t.yes_weight for t in trades)
-    total_no = sum(t.no_weight for t in trades)
+    total_yes = 0.0
+    total_no = 0.0
+
+    for t in trades:
+        total_yes += t.yes_weight
+        total_no += t.no_weight
+
     total_volume = total_yes + total_no
 
     if total_volume == 0:
