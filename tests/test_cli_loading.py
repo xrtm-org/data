@@ -1,12 +1,13 @@
 
-import pytest
+from datetime import datetime, timezone
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from datetime import datetime, timezone
-from pathlib import Path
+
 from xrtm.data.cli import _load_trades
 from xrtm.data.core.schemas import TradeEvent
+
 
 def test_load_trades_parquet(tmp_path):
     # Create dummy data
