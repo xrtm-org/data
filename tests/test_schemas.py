@@ -52,6 +52,32 @@ def test_backward_compatibility_aliases():
     assert output.probability == 0.5
 
 
+def test_governance_reasoning_trace_alias():
+    """Verify governance reasoning_trace maps to runtime logical_trace fields."""
+    output = ForecastOutput(
+        question_id="test_q_4",
+        probability=0.65,
+        reasoning_trace={
+            "narrative": "Governance trace",
+            "causal_graph": {
+                "nodes": [{"node_id": "n1", "event": "Event A", "probability": 0.65}],
+                "edges": [{"source": "n1", "target": "n2", "weight": 0.4}],
+            },
+        },
+    )
+
+    assert output.reasoning == "Governance trace"
+    assert output.logical_trace[0].node_id == "n1"
+    assert output.logical_edges[0].source == "n1"
+    assert output.reasoning_trace == {
+        "narrative": "Governance trace",
+        "causal_graph": {
+            "nodes": [{"event": "Event A", "probability": 0.65, "node_id": "n1"}],
+            "edges": [{"source": "n1", "target": "n2", "weight": 0.4}],
+        },
+    }
+
+
 def test_to_networkx_conversion():
     """Verify conversion to NetworkX graph."""
     node1 = CausalNode(event="Start", node_id="n1")

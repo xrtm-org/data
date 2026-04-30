@@ -26,6 +26,8 @@ Example:
 """
 
 import logging
+from contextlib import asynccontextmanager
+from types import TracebackType
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -57,6 +59,39 @@ class PolymarketSource(DataSource):
 
     API_BASE = "https://gamma-api.polymarket.com"
 
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
+        self._session = session
+        self._owns_session = False
+
+    async def __aenter__(self) -> "PolymarketSource":
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+            self._owns_session = True
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        if self._owns_session and self._session is not None:
+            await self._session.close()
+            self._session = None
+            self._owns_session = False
+
+    @asynccontextmanager
+    async def _get_session(self):
+        if self._session is not None and not self._session.closed:
+            yield self._session
+            return
+
+        session = aiohttp.ClientSession()
+        try:
+            yield session
+        finally:
+            await session.close()
+
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""
         Fetch active forecast questions from Polymarket.
@@ -73,7 +108,7 @@ class PolymarketSource(DataSource):
             url += f"&search={query}"
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status != 200:
                         logger.error(f"Polymarket API returned status {resp.status}")
@@ -100,7 +135,7 @@ class PolymarketSource(DataSource):
         """
         url = f"{self.API_BASE}/events/{question_id}"
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         return self._normalize(await resp.json())

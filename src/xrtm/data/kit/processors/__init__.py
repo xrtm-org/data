@@ -34,6 +34,7 @@ Example:
     >>> print(f"Fitted: α={prior.alpha:.2f}, β={prior.beta:.2f}")
 """
 
+from collections.abc import Iterable
 from typing import Optional
 
 from xrtm.data.core.schemas.prior import BetaPrior
@@ -41,7 +42,7 @@ from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
 
 
 def fit_beta_from_trades(
-    trades: list[TradeEvent],
+    trades: Iterable[TradeEvent],
     scale: float = 100.0,
     min_concentration: float = 2.0,
 ) -> BetaPrior:
@@ -76,11 +77,16 @@ def fit_beta_from_trades(
         >>> # total_no = 0.3*100 + 0.2*50 = 40
         >>> # With scale=100: α = 110/normalization, β = 40/normalization
     """
-    if not trades:
-        return BetaPrior.uniform()
+    total_yes = 0.0
+    total_no = 0.0
+    seen_trade = False
+    for trade in trades:
+        seen_trade = True
+        total_yes += trade.yes_weight
+        total_no += trade.no_weight
 
-    total_yes = sum(t.yes_weight for t in trades)
-    total_no = sum(t.no_weight for t in trades)
+    if not seen_trade:
+        return BetaPrior.uniform()
     total_volume = total_yes + total_no
 
     if total_volume == 0:

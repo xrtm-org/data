@@ -33,6 +33,7 @@ identity: THE TIME MACHINE
 - **ON WAKE**:
     - Scan `src/xrtm/data` for any circular dependencies or illegal imports from higher layers.
 - **ON PR**:
+    - Read `../governance/policies/pr-acceptance-policy.md` before accepting, superseding, rejecting, or deferring PRs.
     - Check modified schemas for breaking changes (field removals/renames or non-optional additions).
     - Verify that all new Pydantic fields have descriptions.
 - **ON FAILURE**:
