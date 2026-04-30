@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from xrtm.data.core import SourceFetchError
 from xrtm.data.providers.subgraph import PolymarketTradeSource
 
 
@@ -143,6 +144,83 @@ class TestPolymarketTradeSource:
             assert window.end_time == end
             assert len(window.trades) == 2
             assert window.total_volume == 300.0
+
+    @pytest.mark.asyncio
+    async def test_fetch_trades_filters_response_to_requested_window(self, source: PolymarketTradeSource) -> None:
+        r"""Provider response cannot leak trades outside the requested snapshot window."""
+        data = {
+            "data": {
+                "orderFilledEvents": [
+                    {
+                        "id": "inside",
+                        "makerAmountFilled": "100",
+                        "takerAmountFilled": "75",
+                        "timestamp": "1704067200",
+                        "maker": "0xmaker1",
+                        "taker": "0xtaker1",
+                    },
+                    {
+                        "id": "future",
+                        "makerAmountFilled": "100",
+                        "takerAmountFilled": "80",
+                        "timestamp": "1704153600",
+                        "maker": "0xmaker2",
+                        "taker": "0xtaker2",
+                    },
+                ]
+            }
+        }
+        mock_response = MagicMock()
+        mock_response.json = AsyncMock(return_value=data)
+        mock_response.raise_for_status = MagicMock()
+
+        mock_response_ctx = AsyncMock()
+        mock_response_ctx.__aenter__.return_value = mock_response
+        mock_response_ctx.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response_ctx
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            trades = await source.fetch_trades(
+                market_id="0xmarket",
+                start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                end_time=datetime(2024, 1, 1, 12, tzinfo=timezone.utc),
+            )
+
+        assert [trade.maker for trade in trades] == ["0xmaker1"]
+
+    @pytest.mark.asyncio
+    async def test_graphql_errors_raise_source_fetch_error(self, source: PolymarketTradeSource) -> None:
+        r"""GraphQL error payloads must not be silently interpreted as empty data."""
+        mock_response = MagicMock()
+        mock_response.json = AsyncMock(return_value={"errors": [{"message": "bad query"}]})
+        mock_response.raise_for_status = MagicMock()
+
+        mock_response_ctx = AsyncMock()
+        mock_response_ctx.__aenter__.return_value = mock_response
+        mock_response_ctx.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response_ctx
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with pytest.raises(SourceFetchError):
+                await source.fetch_trades(
+                    market_id="0xmarket",
+                    start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    end_time=datetime(2024, 1, 3, tzinfo=timezone.utc),
+                )
+
+        assert isinstance(source.last_error, SourceFetchError)
 
     def test_parse_trades_empty_response(self, source: PolymarketTradeSource) -> None:
         r"""Test parsing empty response."""

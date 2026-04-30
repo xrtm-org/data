@@ -28,7 +28,7 @@ Example:
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MetadataBase(BaseModel):
@@ -65,6 +65,14 @@ class MetadataBase(BaseModel):
     subject_type: Optional[str] = Field(None, description="Type of subject being forecasted")
     source_version: Optional[str] = Field(None, description="Version of the data source")
     raw_data: Optional[Dict[str, Any]] = Field(None, description="Original unprocessed data")
+
+    @field_validator("created_at", "snapshot_time", mode="after")
+    @classmethod
+    def _normalize_temporal_fields(cls, value: datetime) -> datetime:
+        r"""Store temporal boundary fields as timezone-aware UTC datetimes."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     def get(self, key: str, default: Any = None) -> Any:
         r"""Backward compatibility for dict-like access."""

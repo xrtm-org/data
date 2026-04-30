@@ -27,17 +27,21 @@ Example:
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from types import TracebackType
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 import aiohttp
 
-from xrtm.data.core import DataSource
+from xrtm.data.core import DataSource, DataSourceError, SourceFetchError, SourceTemporalIntegrityError
 from xrtm.data.core.schemas import ForecastQuestion, MetadataBase
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["PolymarketSource"]
+
+_LIVE_SNAPSHOT_TOLERANCE = timedelta(seconds=60)
 
 
 class PolymarketSource(DataSource):
@@ -59,9 +63,16 @@ class PolymarketSource(DataSource):
 
     API_BASE = "https://gamma-api.polymarket.com"
 
-    def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
+    def __init__(
+        self,
+        session: Optional[aiohttp.ClientSession] = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> None:
         self._session = session
         self._owns_session = False
+        self.raise_on_error = raise_on_error
+        self.last_error: Optional[DataSourceError] = None
 
     async def __aenter__(self) -> "PolymarketSource":
         if self._session is None or self._session.closed:
@@ -92,7 +103,42 @@ class PolymarketSource(DataSource):
         finally:
             await session.close()
 
-    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
+    def _fail(self, error: DataSourceError) -> None:
+        self.last_error = error
+        logger.error("%s", error)
+        if self.raise_on_error:
+            raise error
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _live_snapshot_time(self, snapshot_time: Optional[datetime]) -> datetime:
+        request_time = datetime.now(timezone.utc)
+        if snapshot_time is None:
+            return request_time
+
+        snapshot_utc = self._as_utc(snapshot_time)
+        if snapshot_utc < request_time - _LIVE_SNAPSHOT_TOLERANCE:
+            raise SourceTemporalIntegrityError(
+                "Polymarket Gamma is a live-only API and cannot satisfy historical "
+                f"snapshot_time={snapshot_utc.isoformat()} without future leakage."
+            )
+        if snapshot_utc > request_time + _LIVE_SNAPSHOT_TOLERANCE:
+            raise SourceTemporalIntegrityError(
+                f"snapshot_time={snapshot_utc.isoformat()} is in the future for a live Polymarket request."
+            )
+        return snapshot_utc
+
+    async def fetch_questions(
+        self,
+        query: Optional[str] = None,
+        limit: int = 5,
+        *,
+        snapshot_time: Optional[datetime] = None,
+    ) -> List[ForecastQuestion]:
         r"""
         Fetch active forecast questions from Polymarket.
 
@@ -103,27 +149,50 @@ class PolymarketSource(DataSource):
         Returns:
             List of ForecastQuestion objects from active markets.
         """
-        url = f"{self.API_BASE}/events?active=true&closed=false&limit={limit}"
+        try:
+            effective_snapshot_time = self._live_snapshot_time(snapshot_time)
+        except SourceTemporalIntegrityError as e:
+            self._fail(e)
+            return []
+
+        params = {"active": "true", "closed": "false", "limit": str(limit)}
         if query:
-            url += f"&search={query}"
+            params["search"] = query
+        url = f"{self.API_BASE}/events?{urlencode(params)}"
 
         try:
             async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status != 200:
-                        logger.error(f"Polymarket API returned status {resp.status}")
+                        self._fail(SourceFetchError(f"Polymarket API returned status {resp.status} for events request."))
                         return []
 
                     data = await resp.json()
-                    questions = []
-                    for item in data:
-                        questions.append(self._normalize(item))
+                    if not isinstance(data, list):
+                        self._fail(SourceFetchError("Polymarket API returned a non-list events payload."))
+                        return []
+
+                    questions: list[ForecastQuestion] = []
+                    for idx, item in enumerate(data):
+                        if not isinstance(item, dict):
+                            logger.warning("Skipping Polymarket event %s: item must be an object.", idx)
+                            continue
+                        try:
+                            questions.append(self._normalize(item, effective_snapshot_time))
+                        except (TypeError, ValueError) as e:
+                            logger.warning("Skipping invalid Polymarket event %s: %s", idx, e)
+                    self.last_error = None
                     return questions
-        except Exception as e:
-            logger.error(f"Failed to fetch questions from Polymarket: {e}")
+        except (aiohttp.ClientError, TimeoutError, TypeError, ValueError) as e:
+            self._fail(SourceFetchError(f"Failed to fetch questions from Polymarket: {e}"))
             return []
 
-    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+    async def get_question_by_id(
+        self,
+        question_id: str,
+        *,
+        snapshot_time: Optional[datetime] = None,
+    ) -> Optional[ForecastQuestion]:
         r"""
         Retrieve a single Polymarket event by ID.
 
@@ -133,18 +202,36 @@ class PolymarketSource(DataSource):
         Returns:
             The ForecastQuestion if found, None otherwise.
         """
+        try:
+            effective_snapshot_time = self._live_snapshot_time(snapshot_time)
+        except SourceTemporalIntegrityError as e:
+            self._fail(e)
+            return None
+
         url = f"{self.API_BASE}/events/{question_id}"
         try:
             async with self._get_session() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
-                        return self._normalize(await resp.json())
+                        data = await resp.json()
+                        if not isinstance(data, dict):
+                            self._fail(SourceFetchError(f"Polymarket event {question_id} payload is not an object."))
+                            return None
+                        question = self._normalize(data, effective_snapshot_time)
+                        self.last_error = None
+                        return question
+                    if resp.status != 404:
+                        self._fail(
+                            SourceFetchError(
+                                f"Polymarket API returned status {resp.status} for event {question_id} request."
+                            )
+                        )
                     return None
-        except Exception as e:
-            logger.error(f"Failed to retrieve Polymarket event {question_id}: {e}")
+        except (aiohttp.ClientError, TimeoutError, TypeError, ValueError) as e:
+            self._fail(SourceFetchError(f"Failed to retrieve Polymarket event {question_id}: {e}"))
             return None
 
-    def _normalize(self, item: Dict[str, Any]) -> ForecastQuestion:
+    def _normalize(self, item: Dict[str, Any], snapshot_time: datetime) -> ForecastQuestion:
         r"""
         Normalize Polymarket API response to ForecastQuestion schema.
 
@@ -160,8 +247,10 @@ class PolymarketSource(DataSource):
             description=item.get("description", ""),
             metadata=MetadataBase(
                 tags=item.get("tags", []),
+                snapshot_time=snapshot_time,
                 subject_type="binary",
                 source_version="polymarket-gamma-v1",
                 raw_data=item,
+                fetched_at=datetime.now(timezone.utc),
             ),
         )

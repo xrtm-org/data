@@ -31,7 +31,7 @@ Example:
 """
 
 # Core interfaces
-from xrtm.data.core import DataSource
+from xrtm.data.core import DataSource, DataSourceError, SourceFetchError, SourceTemporalIntegrityError
 
 # Core schemas (public API)
 from xrtm.data.core.schemas import (
@@ -46,6 +46,9 @@ from xrtm.data.core.schemas import (
 __all__ = [
     # Interfaces
     "DataSource",
+    "DataSourceError",
+    "SourceFetchError",
+    "SourceTemporalIntegrityError",
     # Schemas
     "MetadataBase",
     "ForecastQuestion",

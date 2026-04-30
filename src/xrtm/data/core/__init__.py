@@ -21,6 +21,6 @@ providers must implement. The core module is domain-agnostic and MUST NOT
 import from kit/ or providers/.
 """
 
-from xrtm.data.core.interfaces import DataSource
+from xrtm.data.core.interfaces import DataSource, DataSourceError, SourceFetchError, SourceTemporalIntegrityError
 
-__all__ = ["DataSource"]
+__all__ = ["DataSource", "DataSourceError", "SourceFetchError", "SourceTemporalIntegrityError"]

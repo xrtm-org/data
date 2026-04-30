@@ -38,7 +38,15 @@ from typing import Any, Optional
 
 import aiohttp
 
+from xrtm.data.core import SourceFetchError
 from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
+
+
+def _as_utc(value: datetime) -> datetime:
+    r"""Normalize datetimes to timezone-aware UTC without rejecting legacy naive inputs."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class PolymarketTradeSource:
@@ -81,6 +89,17 @@ class PolymarketTradeSource:
         """
         self.endpoint = endpoint or self.ENDPOINT
         self.timeout = timeout
+        self.last_error: Optional[SourceFetchError] = None
+
+    @staticmethod
+    def _validate_window(start_time: datetime, end_time: datetime, limit: int) -> tuple[datetime, datetime]:
+        start_utc = _as_utc(start_time)
+        end_utc = _as_utc(end_time)
+        if end_utc < start_utc:
+            raise ValueError("end_time must not precede start_time")
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        return start_utc, end_utc
 
     async def fetch_trades(
         self,
@@ -101,6 +120,8 @@ class PolymarketTradeSource:
         Returns:
             List of TradeEvent objects in chronological order.
         """
+        start_utc, end_utc = self._validate_window(start_time, end_time, limit)
+
         # Query filtering by makerAssetId (assuming token is the asset being traded)
         query = """
         query($assetId: String!, $start: Int!, $end: Int!, $first: Int!) {
@@ -141,8 +162,8 @@ class PolymarketTradeSource:
 
         variables = {
             "assetId": market_id,
-            "start": int(start_time.timestamp()),
-            "end": int(end_time.timestamp()),
+            "start": int(start_utc.timestamp()),
+            "end": int(end_utc.timestamp()),
             "first": limit,
         }
 
@@ -155,11 +176,29 @@ class PolymarketTradeSource:
                 response.raise_for_status()
                 data = await response.json()
 
-        return self._parse_trades(data, market_id)
+        if not isinstance(data, dict):
+            error = SourceFetchError("Polymarket subgraph returned a non-object GraphQL payload.")
+            self.last_error = error
+            raise error
+        if data.get("errors"):
+            error = SourceFetchError(f"Polymarket subgraph returned GraphQL errors: {data['errors']}")
+            self.last_error = error
+            raise error
 
-    def _parse_trades(self, data: dict[str, Any], market_id: str) -> list[TradeEvent]:
+        self.last_error = None
+        return self._parse_trades(data, market_id, start_utc, end_utc)
+
+    def _parse_trades(
+        self,
+        data: dict[str, Any],
+        market_id: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> list[TradeEvent]:
         r"""Parse GraphQL response into TradeEvent objects."""
         trades: list[TradeEvent] = []
+        start_utc = _as_utc(start_time) if start_time is not None else None
+        end_utc = _as_utc(end_time) if end_time is not None else None
 
         order_filleds = data.get("data", {}).get("orderFilledEvents", [])
         for item in order_filleds:
@@ -209,6 +248,10 @@ class PolymarketTradeSource:
 
                 # Convert timestamp
                 timestamp = datetime.fromtimestamp(int(item.get("timestamp", 0)), tz=timezone.utc)
+                if start_utc is not None and timestamp < start_utc:
+                    continue
+                if end_utc is not None and timestamp > end_utc:
+                    continue
 
                 trade = TradeEvent(
                     price=max(0.0, min(1.0, price)),
@@ -244,11 +287,12 @@ class PolymarketTradeSource:
         Returns:
             TradeWindow containing all trades in the specified window.
         """
-        trades = await self.fetch_trades(market_id, start_time, end_time, limit)
+        start_utc, end_utc = self._validate_window(start_time, end_time, limit)
+        trades = await self.fetch_trades(market_id, start_utc, end_utc, limit)
         return TradeWindow(
             trades=trades,
-            start_time=start_time,
-            end_time=end_time,
+            start_time=start_utc,
+            end_time=end_utc,
             market_id=market_id,
         )
 
@@ -289,6 +333,16 @@ class PolymarketTradeSource:
                 response.raise_for_status()
                 data = await response.json()
 
+        if not isinstance(data, dict):
+            error = SourceFetchError("Polymarket subgraph returned a non-object GraphQL payload.")
+            self.last_error = error
+            raise error
+        if data.get("errors"):
+            error = SourceFetchError(f"Polymarket subgraph returned GraphQL errors: {data['errors']}")
+            self.last_error = error
+            raise error
+
+        self.last_error = None
         markets = data.get("data", {}).get("markets", [])
         return [
             {
