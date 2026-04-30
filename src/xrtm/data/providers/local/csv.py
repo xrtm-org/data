@@ -29,7 +29,10 @@ import asyncio
 import json
 import logging
 import threading
+from datetime import datetime
 from typing import Any, List, Optional
+
+from pydantic import ValidationError
 
 from xrtm.data.core import DataSource
 from xrtm.data.core.schemas import ForecastQuestion
@@ -75,7 +78,7 @@ class LocalDataSource(DataSource):
             try:
                 with open(self.file_path, "r") as f:
                     raw_data = json.load(f)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.error("Failed to read local questions from %s: %s", self.file_path, e)
                 self._questions = []
                 self._questions_by_id = {}
@@ -95,7 +98,7 @@ class LocalDataSource(DataSource):
                     continue
                 try:
                     question = ForecastQuestion(**item)
-                except Exception as e:
+                except ValidationError as e:
                     logger.warning("Skipping invalid local question %s from %s: %s", idx, self.file_path, e)
                     continue
 
@@ -124,13 +127,17 @@ class LocalDataSource(DataSource):
                 break
         return questions
 
-    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
+    async def fetch_questions(
+        self, query: Optional[str] = None, limit: int = 5, *, snapshot_time: Optional[datetime] = None
+    ) -> List[ForecastQuestion]:
         r"""
         Fetch questions from the local JSON file.
 
         Args:
             query: Optional search string to filter questions by title.
             limit: Maximum number of questions to return.
+            snapshot_time: Accepted for DataSource compatibility. Local snapshots
+                are already frozen by the file contents.
 
         Returns:
             List of ForecastQuestion objects matching the criteria.
@@ -152,12 +159,16 @@ class LocalDataSource(DataSource):
             return []
         return [question.model_dump(mode="json") for question in self._questions]
 
-    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+    async def get_question_by_id(
+        self, question_id: str, *, snapshot_time: Optional[datetime] = None
+    ) -> Optional[ForecastQuestion]:
         r"""
         Retrieve a single question by ID from the local file.
 
         Args:
             question_id: The unique identifier of the question.
+            snapshot_time: Accepted for DataSource compatibility. Local snapshots
+                are already frozen by the file contents.
 
         Returns:
             The ForecastQuestion if found, None otherwise.

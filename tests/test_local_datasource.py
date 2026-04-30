@@ -15,6 +15,7 @@
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -77,6 +78,19 @@ async def test_fetch_questions_query_case_insensitive(sample_data):
     questions = await source.fetch_questions(query="ai")
     assert len(questions) == 1
     assert questions[0].id == "q2"
+
+
+@pytest.mark.asyncio
+async def test_accepts_snapshot_time_for_datasource_compatibility(sample_data):
+    source = LocalDataSource(sample_data)
+    snapshot_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    questions = await source.fetch_questions(limit=1, snapshot_time=snapshot_time)
+    question = await source.get_question_by_id("q1", snapshot_time=snapshot_time)
+
+    assert len(questions) == 1
+    assert question is not None
+    assert question.id == "q1"
 
 
 @pytest.mark.asyncio

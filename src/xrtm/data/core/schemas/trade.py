@@ -31,10 +31,17 @@ Example:
     ... )
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _as_utc(value: datetime) -> datetime:
+    r"""Normalize datetimes to timezone-aware UTC without rejecting legacy naive inputs."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class TradeEvent(BaseModel):
@@ -98,6 +105,12 @@ class TradeEvent(BaseModel):
         description="Transaction hash for verification",
     )
 
+    @field_validator("timestamp", mode="after")
+    @classmethod
+    def _normalize_timestamp(cls, value: datetime) -> datetime:
+        r"""Normalize trade timestamps to UTC to make window comparisons stable."""
+        return _as_utc(value)
+
     @property
     def yes_weight(self) -> float:
         r"""Volume-weighted contribution to Yes outcome: price × amount."""
@@ -148,6 +161,27 @@ class TradeWindow(BaseModel):
         ...,
         description="Identifier for the market these trades belong to",
     )
+
+    @field_validator("start_time", "end_time", mode="after")
+    @classmethod
+    def _normalize_window_boundary(cls, value: datetime) -> datetime:
+        r"""Normalize window boundaries to UTC before enforcing leakage invariants."""
+        return _as_utc(value)
+
+    @model_validator(mode="after")
+    def _validate_temporal_bounds(self) -> "TradeWindow":
+        r"""Ensure a trade window cannot contain future or pre-window events."""
+        if self.end_time < self.start_time:
+            raise ValueError("end_time must not precede start_time")
+
+        leaked = [
+            trade.timestamp
+            for trade in self.trades
+            if trade.timestamp < self.start_time or trade.timestamp > self.end_time
+        ]
+        if leaked:
+            raise ValueError("trades must fall within [start_time, end_time]")
+        return self
 
     @property
     def total_volume(self) -> float:

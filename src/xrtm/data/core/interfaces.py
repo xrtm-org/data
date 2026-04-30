@@ -23,16 +23,29 @@ data provider, regardless of the source.
 Example:
     >>> from xrtm.data.core import DataSource
     >>> class MySource(DataSource):
-    ...     async def fetch_questions(self, query=None, limit=5):
+    ...     async def fetch_questions(self, query=None, limit=5, *, snapshot_time=None):
     ...         return []
     ...     async def get_question_by_id(self, question_id):
     ...         return None
 """
 
 import abc
+from datetime import datetime
 from typing import List, Optional
 
 from xrtm.data.core.schemas.forecast import ForecastQuestion
+
+
+class DataSourceError(RuntimeError):
+    r"""Base exception for data source failures."""
+
+
+class SourceFetchError(DataSourceError):
+    r"""Raised when a provider cannot fetch or decode source data."""
+
+
+class SourceTemporalIntegrityError(DataSourceError):
+    r"""Raised when a provider cannot satisfy a requested snapshot safely."""
 
 
 class DataSource(abc.ABC):
@@ -47,18 +60,22 @@ class DataSource(abc.ABC):
 
     Example:
         >>> class LocalSource(DataSource):
-        ...     async def fetch_questions(self, query=None, limit=5):
+        ...     async def fetch_questions(self, query=None, limit=5, *, snapshot_time=None):
         ...         return [ForecastQuestion(id="1", title="Test")]
     """
 
     @abc.abstractmethod
-    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
+    async def fetch_questions(
+        self, query: Optional[str] = None, limit: int = 5, *, snapshot_time: Optional[datetime] = None
+    ) -> List[ForecastQuestion]:
         r"""
         Fetch a list of forecast questions from the data source.
 
         Args:
             query: Optional search/filter string.
             limit: Maximum number of questions to return.
+            snapshot_time: Optional end-of-history timestamp. Providers that cannot
+                satisfy historical snapshots must surface a temporal integrity error.
 
         Returns:
             List of ForecastQuestion objects matching the criteria.
@@ -66,12 +83,16 @@ class DataSource(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+    async def get_question_by_id(
+        self, question_id: str, *, snapshot_time: Optional[datetime] = None
+    ) -> Optional[ForecastQuestion]:
         r"""
         Retrieve a single question by its unique identifier.
 
         Args:
             question_id: The unique identifier of the question.
+            snapshot_time: Optional end-of-history timestamp. Providers that cannot
+                satisfy historical snapshots must surface a temporal integrity error.
 
         Returns:
             The ForecastQuestion if found, None otherwise.
@@ -79,4 +100,4 @@ class DataSource(abc.ABC):
         pass
 
 
-__all__ = ["DataSource"]
+__all__ = ["DataSource", "DataSourceError", "SourceFetchError", "SourceTemporalIntegrityError"]

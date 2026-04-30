@@ -486,7 +486,9 @@ class RealBinaryCorpusSource(DataSource):
         self._questions = [record.to_forecast_question() for record in self._records]
         self._questions_by_id = {question.id: question for question in self._questions}
 
-    async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> list[ForecastQuestion]:
+    async def fetch_questions(
+        self, query: Optional[str] = None, limit: int = 5, *, snapshot_time: Optional[datetime] = None
+    ) -> list[ForecastQuestion]:
         r"""Fetch deterministic corpus questions, optionally filtering title/content text."""
         query_lower = query.lower() if query else None
         matches: list[ForecastQuestion] = []
@@ -498,7 +500,9 @@ class RealBinaryCorpusSource(DataSource):
                 break
         return matches
 
-    async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
+    async def get_question_by_id(
+        self, question_id: str, *, snapshot_time: Optional[datetime] = None
+    ) -> Optional[ForecastQuestion]:
         r"""Retrieve a deterministic corpus question by id."""
         question = self._questions_by_id.get(question_id)
         if question is None:

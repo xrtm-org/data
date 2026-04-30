@@ -12,11 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from xrtm.data import CausalEdge, CausalNode, ForecastOutput
+from xrtm.data import CausalEdge, CausalNode, ForecastOutput, MetadataBase
+from xrtm.data.core.schemas import TradeEvent, TradeWindow
 
 
 def test_forecast_output_initialization():
@@ -100,3 +101,50 @@ def test_to_networkx_conversion():
         assert dg.has_edge("n1", "n2")
     except ImportError:
         pytest.skip("NetworkX not installed")
+
+
+def test_metadata_temporal_fields_normalize_to_utc():
+    """Metadata timestamps remain timezone-aware for deterministic snapshot comparisons."""
+    metadata = MetadataBase(
+        created_at=datetime(2024, 1, 1, 12, 0),
+        snapshot_time=datetime(2024, 1, 1, 13, 0),
+    )
+
+    assert metadata.created_at.tzinfo == timezone.utc
+    assert metadata.snapshot_time.tzinfo == timezone.utc
+
+
+def test_trade_window_rejects_future_leakage():
+    """TradeWindow enforces that no trade falls outside its snapshot window."""
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    future_trade = TradeEvent(
+        price=0.5,
+        amount=1.0,
+        timestamp=end + timedelta(seconds=1),
+        maker="0xmaker",
+        taker="0xtaker",
+    )
+
+    with pytest.raises(ValueError, match="trades must fall within"):
+        TradeWindow(trades=[future_trade], start_time=start, end_time=end, market_id="m1")
+
+
+def test_trade_window_normalizes_naive_boundaries_and_timestamps():
+    """Legacy naive datetimes are interpreted as UTC before invariant checks."""
+    trade = TradeEvent(
+        price=0.5,
+        amount=1.0,
+        timestamp=datetime(2024, 1, 1, 12, 0),
+        maker="0xmaker",
+        taker="0xtaker",
+    )
+    window = TradeWindow(
+        trades=[trade],
+        start_time=datetime(2024, 1, 1),
+        end_time=datetime(2024, 1, 2),
+        market_id="m1",
+    )
+
+    assert window.start_time.tzinfo == timezone.utc
+    assert window.trades[0].timestamp.tzinfo == timezone.utc
