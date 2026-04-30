@@ -75,6 +75,9 @@ def collect(
         xrtm-data collect -m 0x1234... -d 30 -o data/trades.parquet
     """
     output_path = Path(output)
+    output_suffix = output_path.suffix.lower()
+    if output_suffix not in {".parquet", ".json"}:
+        raise click.ClickException("Output path must end with .parquet or .json")
 
     # Check cache
     if output_path.exists() and not force:
@@ -124,10 +127,12 @@ def collect(
     # Save output
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if output_path.suffix == ".parquet":
+    if output_suffix == ".parquet":
         _save_parquet(window, output_path)
-    else:
+    elif output_suffix == ".json":
         _save_json(window, output_path)
+    else:  # pragma: no cover - guarded before collection
+        raise click.ClickException("Output path must end with .parquet or .json")
 
     console.print(f"[green]✓ Saved {len(window.trades)} trades to:[/green] {output_path}")
 
@@ -214,8 +219,9 @@ def info(file_path: str):
     Displays summary statistics for trade files or prior files.
     """
     path = Path(file_path)
+    suffix = path.suffix.lower()
 
-    if path.suffix == ".json":
+    if suffix == ".json":
         with open(path) as f:
             data = json.load(f)
 
@@ -230,7 +236,7 @@ def info(file_path: str):
             ))
         else:
             console.print(f"JSON file with {len(data)} keys")
-    elif path.suffix == ".parquet":
+    elif suffix == ".parquet":
         import pyarrow.parquet as pq
 
         table = pq.read_table(path)
@@ -240,6 +246,8 @@ def info(file_path: str):
             f"Columns: {table.column_names}",
             title=path.name,
         ))
+    else:
+        raise click.ClickException("Unsupported file type. Expected .json or .parquet")
 
 
 def _save_parquet(window, path: Path) -> None:
