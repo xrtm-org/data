@@ -19,6 +19,8 @@ class ForecastOutput(BaseModel):
 
 Unlike simple ML models that output a single number, xrtm agents must output a **Reasoning Trace**. This is stored as a directed acyclic graph (DAG) of `CausalNode` objects.
 
+Governance v1/v1.1 names this surface `reasoning_trace`. The runtime `ForecastOutput` keeps the historical `logical_trace`/`logical_edges` fields for compatibility, while accepting `reasoning_trace` input and exposing a read-only `reasoning_trace` alias with the governance shape.
+
 ### Why?
 1.  **Explainability**: We can debug *why* the agent made a prediction.
 2.  **Intervention**: `xrtm-eval` can run "What-If" scenarios by modifying nodes in the trace.

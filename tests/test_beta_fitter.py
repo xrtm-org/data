@@ -107,6 +107,12 @@ class TestFitBetaFromTrades:
         prior = fit_beta_from_trades(trades, scale=1000.0, min_concentration=10.0)
         assert prior.concentration >= 10.0
 
+    def test_accepts_single_use_iterators(self) -> None:
+        r"""Single-pass fitting should work with non-list iterators."""
+        trades = (trade for trade in [self._make_trade(price=0.7, amount=100), self._make_trade(price=0.3, amount=100)])
+        prior = fit_beta_from_trades(trades)
+        assert prior.mean == pytest.approx(0.5)
+
 
 class TestFitBetaExponentialDecay:
     r"""Tests for exponential decay fitting."""

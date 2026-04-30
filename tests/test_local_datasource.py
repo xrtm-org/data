@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import json
 
 import pytest
@@ -139,3 +140,61 @@ async def test_caching_behavior(sample_data):
     # Second call - should still return original data because it's cached
     questions = await source.fetch_questions()
     assert len(questions) == 3
+
+
+@pytest.mark.asyncio
+async def test_structural_invalidity_returns_empty(tmp_path):
+    file_path = tmp_path / "questions.json"
+    with open(file_path, "w") as f:
+        json.dump({"id": "q1", "title": "Not a list"}, f)
+
+    source = LocalDataSource(str(file_path))
+
+    assert await source.fetch_questions() == []
+    assert await source.get_question_by_id("q1") is None
+
+
+@pytest.mark.asyncio
+async def test_skips_invalid_items_and_keeps_first_duplicate(tmp_path):
+    file_path = tmp_path / "questions.json"
+    with open(file_path, "w") as f:
+        json.dump(
+            [
+                {"id": "q1", "title": "Original title"},
+                "not an object",
+                {"id": "missing-title"},
+                {"id": "q1", "title": "Duplicate title"},
+                {"id": "q2", "title": "Second valid question"},
+            ],
+            f,
+        )
+
+    source = LocalDataSource(str(file_path))
+
+    questions = await source.fetch_questions(limit=10)
+    assert [q.id for q in questions] == ["q1", "q2"]
+    q1 = await source.get_question_by_id("q1")
+    assert q1 is not None
+    assert q1.title == "Original title"
+
+
+@pytest.mark.asyncio
+async def test_returned_questions_do_not_mutate_cache(sample_data):
+    source = LocalDataSource(sample_data)
+
+    first = await source.get_question_by_id("q1")
+    assert first is not None
+    first.title = "mutated"
+
+    second = await source.get_question_by_id("q1")
+    assert second is not None
+    assert second.title == "Will it snow?"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_load_uses_consistent_cache(sample_data):
+    source = LocalDataSource(sample_data)
+
+    results = await asyncio.gather(*(source.get_question_by_id("q2") for _ in range(20)))
+
+    assert all(result is not None and result.id == "q2" for result in results)

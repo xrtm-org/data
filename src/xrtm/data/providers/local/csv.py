@@ -28,7 +28,8 @@ Example:
 import asyncio
 import json
 import logging
-from typing import List, Optional
+import threading
+from typing import Any, List, Optional
 
 from xrtm.data.core import DataSource
 from xrtm.data.core.schemas import ForecastQuestion
@@ -58,27 +59,70 @@ class LocalDataSource(DataSource):
 
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
-        self._questions: Optional[List[dict]] = None
+        self._questions: Optional[List[ForecastQuestion]] = None
+        self._questions_by_id: dict[str, ForecastQuestion] = {}
+        self._load_lock = threading.Lock()
+
+    def _ensure_data_loaded(self) -> None:
+        r"""Load and validate the JSON cache exactly once."""
+        if self._questions is not None:
+            return
+
+        with self._load_lock:
+            if self._questions is not None:
+                return
+
+            try:
+                with open(self.file_path, "r") as f:
+                    raw_data = json.load(f)
+            except Exception as e:
+                logger.error("Failed to read local questions from %s: %s", self.file_path, e)
+                self._questions = []
+                self._questions_by_id = {}
+                return
+
+            if not isinstance(raw_data, list):
+                logger.error("Invalid local questions file %s: JSON root must be a list.", self.file_path)
+                self._questions = []
+                self._questions_by_id = {}
+                return
+
+            questions: list[ForecastQuestion] = []
+            questions_by_id: dict[str, ForecastQuestion] = {}
+            for idx, item in enumerate(raw_data):
+                if not isinstance(item, dict):
+                    logger.warning("Skipping local question %s from %s: item must be an object.", idx, self.file_path)
+                    continue
+                try:
+                    question = ForecastQuestion(**item)
+                except Exception as e:
+                    logger.warning("Skipping invalid local question %s from %s: %s", idx, self.file_path, e)
+                    continue
+
+                if question.id not in questions_by_id:
+                    questions.append(question)
+                    questions_by_id[question.id] = question
+                else:
+                    logger.warning("Duplicate local question id %s in %s; keeping first occurrence.", question.id, self.file_path)
+
+            self._questions = questions
+            self._questions_by_id = questions_by_id
 
     def _fetch_questions_sync(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""Synchronous implementation of question fetching."""
-        try:
-            if self._questions is None:
-                with open(self.file_path, "r") as f:
-                    self._questions = json.load(f)
-
-            questions = []
-            query_lower = query.lower() if query else None
-            for item in self._questions:
-                if not query_lower or query_lower in item.get("title", "").lower():
-                    questions.append(ForecastQuestion(**item))
-
-                if len(questions) >= limit:
-                    break
-            return questions
-        except Exception as e:
-            logger.error(f"Failed to read local questions from {self.file_path}: {e}")
+        self._ensure_data_loaded()
+        if self._questions is None:
             return []
+
+        questions = []
+        query_lower = query.lower() if query else None
+        for question in self._questions:
+            if not query_lower or query_lower in question.title.lower():
+                questions.append(question.model_copy(deep=True))
+
+            if len(questions) >= limit:
+                break
+        return questions
 
     async def fetch_questions(self, query: Optional[str] = None, limit: int = 5) -> List[ForecastQuestion]:
         r"""
@@ -95,18 +139,18 @@ class LocalDataSource(DataSource):
 
     def _get_question_by_id_sync(self, question_id: str) -> Optional[ForecastQuestion]:
         r"""Synchronous implementation of single question retrieval."""
-        try:
-            if self._questions is None:
-                with open(self.file_path, "r") as f:
-                    self._questions = json.load(f)
+        self._ensure_data_loaded()
+        question = self._questions_by_id.get(question_id)
+        if question is not None:
+            return question.model_copy(deep=True)
+        return None
 
-            for item in self._questions:
-                if item.get("id") == question_id:
-                    return ForecastQuestion(**item)
-            return None
-        except Exception as e:
-            logger.error(f"Failed to retrieve question {question_id} from {self.file_path}: {e}")
-            return None
+    def _raw_questions_for_tests(self) -> list[dict[str, Any]]:
+        r"""Return cached question data for tests and diagnostics."""
+        self._ensure_data_loaded()
+        if self._questions is None:
+            return []
+        return [question.model_dump(mode="json") for question in self._questions]
 
     async def get_question_by_id(self, question_id: str) -> Optional[ForecastQuestion]:
         r"""

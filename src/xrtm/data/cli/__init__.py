@@ -289,7 +289,6 @@ def _load_trades(path: Path) -> list:
         import pyarrow.parquet as pq
 
         table = pq.read_table(path)
-        df = table.to_pandas()
         return [
             TradeEvent(
                 price=row["price"],
@@ -298,7 +297,7 @@ def _load_trades(path: Path) -> list:
                 maker=row["maker"],
                 taker=row["taker"],
             )
-            for _, row in df.iterrows()
+            for row in table.to_pylist()
         ]
     else:
         with open(path) as f:

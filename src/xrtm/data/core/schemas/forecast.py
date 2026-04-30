@@ -28,7 +28,7 @@ Example:
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
 class MetadataBase(BaseModel):
@@ -201,6 +201,41 @@ class ForecastOutput(BaseModel):
     structural_trace: List[str] = Field(default_factory=list, description="Order of graph nodes executed")
     calibration_metrics: Dict[str, Any] = Field(default_factory=dict, description="Performance metrics")
     metadata: MetadataBase = Field(default_factory=MetadataBase)  # type: ignore[arg-type]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_reasoning_trace_alias(cls, data: Any) -> Any:
+        r"""Accept governance ``reasoning_trace`` as an alias for runtime trace fields."""
+        if not isinstance(data, dict) or "reasoning_trace" not in data:
+            return data
+
+        trace = data["reasoning_trace"]
+        updated = dict(data)
+        if isinstance(trace, dict):
+            if "reasoning" not in updated and isinstance(trace.get("narrative"), str):
+                updated["reasoning"] = trace["narrative"]
+
+            causal_graph = trace.get("causal_graph")
+            if isinstance(causal_graph, dict):
+                if "logical_trace" not in updated and "nodes" in causal_graph:
+                    updated["logical_trace"] = causal_graph["nodes"]
+                if "logical_edges" not in updated and "edges" in causal_graph:
+                    updated["logical_edges"] = causal_graph["edges"]
+        elif isinstance(trace, list) and "logical_trace" not in updated:
+            updated["logical_trace"] = trace
+
+        return updated
+
+    @property
+    def reasoning_trace(self) -> Dict[str, Any]:
+        r"""Governance-compatible alias for the narrative and causal graph trace."""
+        return {
+            "narrative": self.reasoning,
+            "causal_graph": {
+                "nodes": [node.model_dump(exclude_none=True) for node in self.logical_trace],
+                "edges": [edge.model_dump(exclude_none=True) for edge in self.logical_edges],
+            },
+        }
 
     @property
     def confidence(self) -> float:
