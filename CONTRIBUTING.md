@@ -21,6 +21,12 @@ uv run pytest
 3. **Public API**: Define `__all__` in every module
 4. **Docstrings**: Use Hugging Face style (`r""" """`)
 
+## Cross-repo compatibility
+
+`xrtm-data` is an upstream contract repo for the rest of the stack. Before merging a change that affects documented schemas, serialized payloads, dependency/version expectations, or cross-repo CI behavior, follow the canonical [Cross-Repository Compatibility and Coordination Policy](https://github.com/xrtm-org/governance/blob/main/policies/cross-repo-compatibility-policy.md).
+
+When a change affects downstream consumers, link the related PRs and validate with explicit downstream refs or candidate artifacts instead of same-name branch aliases.
+
 ## Pull Request Process
 
 1. Fork and create branch from `main`
