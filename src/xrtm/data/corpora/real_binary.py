@@ -18,6 +18,14 @@ r"""Small deterministic real-world binary question corpus.
 The records are market-style questions anchored to stable public historical
 facts. They are intentionally embedded in Python so offline tests do not depend
 on package-data configuration or live network access.
+
+**Benchmark Corpus Policy:**
+This is the xrtm-real-binary-v1 seed corpus (Tier 1, Apache 2.0 license).
+It is a minimal fixture for CI smoke tests and provider-free validation.
+For comprehensive release-gate benchmarks, use ForecastBench (Tier 1).
+
+See data/docs/benchmark-corpus-policy.md for source classification and
+licensing requirements.
 """
 
 from datetime import datetime
