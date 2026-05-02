@@ -130,6 +130,8 @@ class CorpusManifest:
     default_split: CorpusSplit = CorpusSplit.FULL
     local_path: Optional[Path] = None
     importer_module: Optional[str] = None
+    availability_loader: Optional[Callable[[Optional[Path]], CorpusAvailability]] = None
+    prepare_loader: Optional[Callable[[Optional[Path], bool, bool], CorpusAvailability]] = None
 
     def load_source(self, split: Optional[CorpusSplit] = None) -> DataSource:
         """Load the corpus DataSource for the given split."""
@@ -249,6 +251,7 @@ class CorpusRegistry:
         cache_root: Optional[Path] = None,
     ) -> CorpusAvailability:
         """Describe whether a corpus is bundled, cached, or using a preview fixture."""
+        manifest = self.get_manifest(corpus_id)
         metadata = self.get_metadata(corpus_id)
         if metadata.bundled:
             return CorpusAvailability(
@@ -260,29 +263,8 @@ class CorpusRegistry:
                 record_count=metadata.size_estimate,
             )
 
-        if corpus_id == "forecast-v1":
-            from xrtm.data.corpora.importers import OfflineCorpusCache
-
-            resolved_cache_root = _resolve_cache_root(cache_root)
-            cache = OfflineCorpusCache(resolved_cache_root)
-            manifest = cache.load_manifest(corpus_id, metadata.version)
-            data_dir = cache.get_corpus_dir(corpus_id, metadata.version)
-            manifest_path = cache.get_manifest_path(corpus_id, metadata.version)
-            import_method = manifest.metadata.get("import_method") if manifest is not None else None
-            source_mode = "preview" if import_method in {None, "fixture"} else "external-cache"
-
-            return CorpusAvailability(
-                corpus_id=metadata.corpus_id,
-                version=metadata.version,
-                source_mode=source_mode,
-                bundled=False,
-                already_cached=manifest is not None,
-                record_count=manifest.record_count if manifest is not None else None,
-                import_method=import_method,
-                cache_root=resolved_cache_root,
-                data_dir=data_dir,
-                manifest_path=manifest_path,
-            )
+        if manifest.availability_loader is not None:
+            return manifest.availability_loader(cache_root)
 
         raise ValueError(f"corpus {corpus_id} does not expose cacheable availability metadata")
 
@@ -295,130 +277,22 @@ class CorpusRegistry:
         use_hf_datasets: bool = True,
     ) -> CorpusAvailability:
         """Prepare an external corpus cache for offline validation."""
+        manifest = self.get_manifest(corpus_id)
         metadata = self.get_metadata(corpus_id)
         if metadata.bundled:
             return self.describe_corpus(corpus_id, cache_root=cache_root)
 
-        if corpus_id != "forecast-v1":
-            raise ValueError(f"corpus {corpus_id} does not provide a product cache workflow")
+        if manifest.prepare_loader is not None:
+            return manifest.prepare_loader(cache_root, refresh, use_hf_datasets)
 
-        from xrtm.data.corpora.forecast_importer import FOReCAstImporter
-        from xrtm.data.corpora.importers import OfflineCorpusCache
-
-        resolved_cache_root = _resolve_cache_root(cache_root)
-        cache = OfflineCorpusCache(resolved_cache_root)
-        if cache.is_cached(corpus_id, metadata.version) and not refresh:
-            return self.describe_corpus(corpus_id, cache_root=resolved_cache_root)
-
-        importer = FOReCAstImporter(use_hf_datasets=use_hf_datasets)
-        data_dir = cache.get_corpus_dir(corpus_id, metadata.version)
-        manifest = importer.import_corpus(data_dir, version=metadata.version)
-        cache.save_manifest(manifest)
-        return self.describe_corpus(corpus_id, cache_root=resolved_cache_root)
+        raise ValueError(f"corpus {corpus_id} does not provide a product cache workflow")
 
     def _register_builtin_corpora(self) -> None:
         """Register built-in embedded corpora."""
-        from xrtm.data.corpora.real_binary import (
-            REAL_BINARY_CORPUS_ID,
-            RealBinaryCorpusSource,
-        )
+        from xrtm.data.corpora._builtin_corpora import build_builtin_manifests
 
-        real_binary_metadata = CorpusMetadata(
-            corpus_id=REAL_BINARY_CORPUS_ID,
-            name="XRTM Real Binary v1",
-            tier=CorpusTier.TIER_1,
-            license_type=LicenseType.APACHE_2_0,
-            description="Minimal deterministic real-world binary question corpus for CI smoke tests",
-            version="1.0",
-            release_gate_approved=True,
-            bundled=True,
-            size_estimate=25,
-            tags=["binary", "deterministic", "embedded", "seed-corpus"],
-            provenance_url="https://github.com/xrtm/xrtm",
-            license_url="https://www.apache.org/licenses/LICENSE-2.0",
-        )
-
-        real_binary_manifest = CorpusManifest(
-            corpus_id=REAL_BINARY_CORPUS_ID,
-            metadata=real_binary_metadata,
-            loader_fn=lambda: RealBinaryCorpusSource(),
-            available_splits=[CorpusSplit.FULL],
-            default_split=CorpusSplit.FULL,
-        )
-
-        self.register(real_binary_manifest)
-
-        self._register_forecast_corpus()
-
-    def _register_forecast_corpus(self) -> None:
-        """Register FOReCAst external corpus as Tier 2 (evaluation-only).
-
-        FOReCAst is NOT approved for release gates per benchmark-corpus-policy.md.
-        This registration enables evaluation workflows while preserving the
-        Tier 2 classification until explicit approval is granted.
-        """
-        import warnings
-
-        from xrtm.data.corpora.forecast_importer import FORECAST_CORPUS_ID, FOReCAstImporter
-        from xrtm.data.corpora.importers import OfflineCorpusCache
-
-        cache_root = _resolve_cache_root()
-        cache = OfflineCorpusCache(cache_root)
-
-        forecast_metadata = CorpusMetadata(
-            corpus_id=FORECAST_CORPUS_ID,
-            name="FOReCAst (Future Outcome Reasoning and Confidence Assessment)",
-            tier=CorpusTier.TIER_2,
-            license_type=LicenseType.MIT,
-            description="Academic benchmark dataset for probabilistic forecasting from NeurIPS 2025. "
-                       "1,390 resolved questions from Metaculus. Evaluation-only until Tier 1 approval.",
-            version="1.0",
-            release_gate_approved=False,
-            bundled=False,
-            size_estimate=1390,
-            tags=["forecast", "external", "evaluation-only", "probabilistic"],
-            provenance_url="https://huggingface.co/datasets/MoyYuan/FOReCAst",
-            license_url="https://opensource.org/licenses/MIT",
-            citation="FOReCAst: Future Outcome Reasoning and Confidence Assessment. NeurIPS 2025 Datasets and Benchmarks Track.",
-            extra={
-                "tier_status": "evaluation-only",
-                "promotion_required": "explicit approval needed for Tier 1 promotion",
-                "non_commercial_clause": "pending clarification",
-            },
-        )
-
-        def load_forecast_source() -> DataSource:
-            importer = FOReCAstImporter(use_hf_datasets=False)
-            data_dir = cache.get_corpus_dir(FORECAST_CORPUS_ID, "1.0")
-            manifest = cache.load_manifest(FORECAST_CORPUS_ID, "1.0")
-            if manifest is None:
-                warnings.warn(
-                    "FOReCAst full cache not found; using the 3-record deterministic preview. "
-                    "Prepare the corpus cache first to run large-scale validation.",
-                    UserWarning,
-                    stacklevel=3,
-                )
-                manifest = importer.import_corpus(data_dir, version="1.0")
-                cache.save_manifest(manifest)
-            elif manifest.metadata.get("import_method") == "fixture":
-                warnings.warn(
-                    "FOReCAst cache currently contains the deterministic preview only. "
-                    "Refresh the cache with the external dataset before relying on large-scale counts.",
-                    UserWarning,
-                    stacklevel=3,
-                )
-            return importer.load_from_manifest(manifest, data_dir)
-
-        forecast_manifest = CorpusManifest(
-            corpus_id=FORECAST_CORPUS_ID,
-            metadata=forecast_metadata,
-            loader_fn=load_forecast_source,
-            available_splits=[CorpusSplit.FULL, CorpusSplit.TRAIN, CorpusSplit.EVAL],
-            default_split=CorpusSplit.FULL,
-            importer_module="xrtm.data.corpora.forecast_importer",
-        )
-
-        self.register(forecast_manifest)
+        for manifest in build_builtin_manifests():
+            self.register(manifest)
 
 
 def get_corpus(corpus_id: str, split: Optional[CorpusSplit] = None) -> DataSource:
@@ -467,15 +341,6 @@ def prepare_corpus(
         refresh=refresh,
         use_hf_datasets=use_hf_datasets,
     )
-
-
-def _resolve_cache_root(cache_root: Optional[Path] = None) -> Path:
-    """Resolve the cache root for external corpora."""
-    import os
-
-    if cache_root is not None:
-        return cache_root
-    return Path(os.environ.get("XRTM_CORPUS_CACHE", Path.home() / ".xrtm" / "corpus-cache"))
 
 
 __all__ = [

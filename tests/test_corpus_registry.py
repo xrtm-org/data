@@ -96,6 +96,16 @@ def test_list_available_corpora_convenience_function(fresh_registry):
     assert all(c.is_release_gate_approved() for c in release_gate)
 
 
+def test_package_root_exports_keep_stable_surface_explicit():
+    import xrtm.data.corpora as corpora
+
+    assert "CorpusRegistry" in corpora.__all__
+    assert "FOReCAstImporter" not in corpora.__all__
+    assert "ImportManifest" not in corpora.__all__
+    assert corpora.FOReCAstImporter.__name__ == "FOReCAstImporter"
+    assert corpora.ImportManifest.__name__ == "ImportManifest"
+
+
 def test_corpus_metadata_is_release_gate_approved():
     metadata = CorpusMetadata(
         corpus_id="test",
