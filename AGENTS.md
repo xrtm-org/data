@@ -34,8 +34,10 @@ identity: THE TIME MACHINE
     - Scan `src/xrtm/data` for any circular dependencies or illegal imports from higher layers.
 - **ON PR**:
     - Read `../governance/policies/pr-acceptance-policy.md` before accepting, superseding, rejecting, or deferring PRs.
+    - Read `../governance/policies/cross-repo-compatibility-policy.md` before changing public schemas, serialized payloads, dependency expectations, or CI behavior that `forecast` or `xrtm` depends on.
     - Check modified schemas for breaking changes (field removals/renames or non-optional additions).
     - Verify that all new Pydantic fields have descriptions.
+    - Do not rely on same-name sibling branches or undocumented branch aliases as compatibility proof.
 - **ON FAILURE**:
     - If a schema validation fails, analyze if it's a data quality issue or a strictness issue. Prefer relaxing validation (e.g., optional fields) over breaking the pipeline, but LOG the anomaly.
 ---
