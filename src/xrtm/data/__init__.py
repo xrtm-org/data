@@ -36,11 +36,15 @@ from xrtm.data.core import DataSource, DataSourceError, SourceFetchError, Source
 # Core schemas (public API)
 from xrtm.data.core.schemas import (
     CausalEdge,
+    CausalGraph,
     CausalNode,
     ConfidenceInterval,
     ForecastOutput,
     ForecastQuestion,
+    ForecastRequest,
+    ForecastResult,
     MetadataBase,
+    ReasoningTrace,
 )
 
 __all__ = [
@@ -52,8 +56,12 @@ __all__ = [
     # Schemas
     "MetadataBase",
     "ForecastQuestion",
+    "ForecastRequest",
     "ForecastOutput",
+    "ForecastResult",
     "CausalNode",
     "CausalEdge",
+    "CausalGraph",
+    "ReasoningTrace",
     "ConfidenceInterval",
 ]

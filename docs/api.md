@@ -4,14 +4,16 @@
 
 ### Forecast Definitions
 
-- **`ForecastOutput`**: The standard prediction object.
-- **`ForecastQuestion`**: The input question object.
-- **`ForecastResolution`**: The ground truth object.
+- **`ForecastResult`** / **`ForecastOutput`**: The canonical forecast-result object with legacy alias support.
+- **`ForecastRequest`** / **`ForecastQuestion`**: The canonical forecast-request object with legacy alias support.
+- Ground-truth resolution objects live in `xrtm-eval`, not `xrtm-data`.
 
-### Causal Graph
+### Reasoning Trace
 
-- **`CausalNode`**: A single reasoning step.
-- **`CausalEdge`**: Connection between nodes.
+- **`ReasoningTrace`**: Narrative trace plus a qualified causal graph.
+- **`CausalGraph`**: Qualified causal structure nested inside a reasoning trace.
+- **`CausalNode`**: A single forecast-path reasoning step.
+- **`CausalEdge`**: Qualified causal connection between reasoning steps.
 
 ## Providers (xrtm.data.providers)
 

@@ -16,21 +16,38 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from xrtm.data import CausalEdge, CausalNode, ForecastOutput, MetadataBase
+from xrtm.data import CausalEdge, CausalNode, ForecastOutput, ForecastResult, MetadataBase
 from xrtm.data.core.schemas import TradeEvent, TradeWindow
 
 
-def test_forecast_output_initialization():
-    """Verify that we can create a valid ForecastOutput object."""
-    output = ForecastOutput(
-        question_id="test_q_1",
+def test_forecast_result_initialization():
+    """Verify that we can create a valid ForecastResult object."""
+    output = ForecastResult(
+        forecast_request_id="test_q_1",
         probability=0.8,
-        reasoning="Test reasoning",
-        logical_trace=[CausalNode(event="Event A", probability=0.9), CausalNode(event="Event B", probability=0.8)],
-        logical_edges=[CausalEdge(source="node_1", target="node_2")],
+        reasoning_trace={
+            "narrative": "Test reasoning",
+            "causal_graph": {
+                "nodes": [
+                    CausalNode(event="Event A", probability=0.9).model_dump(exclude_none=True),
+                    CausalNode(event="Event B", probability=0.8).model_dump(exclude_none=True),
+                ],
+                "edges": [CausalEdge(source="node_1", target="node_2").model_dump(exclude_none=True)],
+            },
+        },
+        execution_trace=["ingestion", "forecast"],
     )
     assert output.probability == 0.8
-    assert len(output.logical_trace) == 2
+    assert output.question_id == "test_q_1"
+    assert len(output.forecast_path) == 2
+    assert output.execution_trace == ["ingestion", "forecast"]
+
+    payload = output.model_dump(mode="json")
+    assert payload["forecast_request_id"] == "test_q_1"
+    assert payload["reasoning_trace"]["narrative"] == "Test reasoning"
+    assert payload["execution_trace"] == ["ingestion", "forecast"]
+    assert "question_id" not in payload
+    assert "structural_trace" not in payload
 
 
 def test_forecast_output_validation_range():
@@ -45,9 +62,16 @@ def test_forecast_output_validation_range():
 
 def test_backward_compatibility_aliases():
     """Verify legacy aliases work (confidence -> probability)."""
-    output = ForecastOutput(question_id="test_q_3", confidence=0.7, reasoning="Alias test")
+    output = ForecastOutput(
+        question_id="test_q_3",
+        confidence=0.7,
+        reasoning="Alias test",
+        structural_trace=["legacy-stage"],
+    )
     assert output.probability == 0.7
     assert output.confidence == 0.7
+    assert output.forecast_request_id == "test_q_3"
+    assert output.execution_trace == ["legacy-stage"]
 
     output.confidence = 0.5
     assert output.probability == 0.5

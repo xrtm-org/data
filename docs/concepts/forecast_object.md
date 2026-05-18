@@ -4,26 +4,33 @@ The **Forecast Object** is the atomic unit of exchange in the xrtm ecosystem. It
 
 ## Core Schema Components
 
-Every valid prediction must adhere to this structure:
+Every valid forecast result must adhere to this structure:
 
 ```python
-class ForecastOutput(BaseModel):
-    question_id: str
-    probability: float          # Main signal (0.0 to 1.0)
-    confidence: Optional[float] # Meta-uncertainty
-    reasoning: str              # Surface-level explanation
-    logical_trace: List[CausalNode] # Structured causal chain
+class ForecastResult(BaseModel):
+    forecast_request_id: str
+    probability: float              # Main signal (0.0 to 1.0)
+    reasoning_trace: ReasoningTrace # Narrative + qualified causal graph
+    execution_trace: List[str]      # Workflow stages that produced the result
 ```
 
-## The "Causal Node" requirement
+Legacy callers may still use `ForecastOutput`, `question_id`, `reasoning`,
+`logical_trace`, `logical_edges`, and `structural_trace`, but new code should
+write the canonical request/result and trace vocabulary.
 
-Unlike simple ML models that output a single number, xrtm agents must output a **Reasoning Trace**. This is stored as a directed acyclic graph (DAG) of `CausalNode` objects.
+## The reasoning-trace requirement
 
-Governance v1/v1.1 names this surface `reasoning_trace`. The runtime `ForecastOutput` keeps the historical `logical_trace`/`logical_edges` fields for compatibility, while accepting `reasoning_trace` input and exposing a read-only `reasoning_trace` alias with the governance shape.
+Unlike simple ML models that output a single number, xrtm agents must output a
+**Reasoning Trace**. The canonical serialized field is `reasoning_trace`,
+optionally carrying a qualified `causal_graph` of `CausalNode` / `CausalEdge`
+records for the forecast path.
+
+Governance v1/v1.1 names this surface `reasoning_trace`. The runtime `ForecastOutput` treats `reasoning_trace` as the canonical serialized shape while keeping the historical `logical_trace`/`logical_edges` fields as compatibility aliases for older callers.
 
 ### Why?
 1.  **Explainability**: We can debug *why* the agent made a prediction.
 2.  **Intervention**: `xrtm-eval` can run "What-If" scenarios by modifying nodes in the trace.
 
 ## Compliance
-Any data provider or agent outputting forecasts **MUST** validate against the `ForecastOutput` Pydantic model.
+Any data provider or agent outputting forecasts **MUST** validate against the
+canonical `ForecastResult` / compatible `ForecastOutput` Pydantic model.
