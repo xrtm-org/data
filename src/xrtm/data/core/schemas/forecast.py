@@ -25,8 +25,9 @@ Example:
     >>> q = ForecastQuestion(id="q1", title="Will it rain tomorrow?")
 """
 
+from collections.abc import ItemsView, KeysView, ValuesView
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -118,6 +119,9 @@ class ForecastQuestion(BaseModel):
         return self.description
 
 
+ForecastRequest = ForecastQuestion
+
+
 class CausalNode(BaseModel):
     r"""
     Represents a single step in a logical reasoning chain.
@@ -170,6 +174,76 @@ class ConfidenceInterval(BaseModel):
     level: float = Field(0.9, ge=0, le=1, description="Confidence level")
 
 
+class MappingCompatibleModel(BaseModel):
+    r"""Base model with lightweight dict-style compatibility helpers."""
+
+    def get(self, key: str, default: Any = None) -> Any:
+        r"""Provide dict-style access for compatibility shims."""
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and hasattr(self, key)
+
+    def items(self) -> ItemsView[str, Any]:
+        return self.model_dump(exclude_none=True).items()
+
+    def keys(self) -> KeysView[str]:
+        return self.model_dump(exclude_none=True).keys()
+
+    def values(self) -> ValuesView[Any]:
+        return self.model_dump(exclude_none=True).values()
+
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
+        for item in self.model_dump(exclude_none=True).items():
+            yield item
+
+    def __len__(self) -> int:
+        return len(self.model_dump(exclude_none=True))
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, dict):
+            return self.model_dump(exclude_none=True) == other
+        return super().__eq__(other)
+
+
+class CausalGraph(MappingCompatibleModel):
+    r"""Qualified causal graph embedded inside a reasoning trace."""
+
+    nodes: List[CausalNode] = Field(
+        default_factory=list,
+        description="Ordered forecast-path nodes inside the qualified causal graph",
+    )
+    edges: List[CausalEdge] = Field(
+        default_factory=list,
+        description="Qualified causal graph edges connecting forecast-path nodes",
+    )
+
+
+class ReasoningTrace(MappingCompatibleModel):
+    r"""Canonical reasoning trace payload for a forecast result."""
+
+    narrative: str = Field("", description="Narrative reasoning for the forecast result")
+    causal_graph: CausalGraph = Field(
+        default_factory=CausalGraph,
+        description="Qualified causal graph for structured forecast-path reasoning",
+    )
+
+    @property
+    def forecast_path(self) -> List[CausalNode]:
+        r"""Canonical alias for ordered reasoning nodes."""
+        return self.causal_graph.nodes
+
+    @forecast_path.setter
+    def forecast_path(self, value: List[CausalNode] | List[Dict[str, Any]]) -> None:
+        r"""Backward-compatible setter for forecast-path nodes."""
+        self.causal_graph.nodes = [
+            node if isinstance(node, CausalNode) else CausalNode.model_validate(node) for node in value
+        ]
+
+
 class ForecastOutput(BaseModel):
     r"""
     The structured result of an agent's forecasting reasoning.
@@ -178,19 +252,23 @@ class ForecastOutput(BaseModel):
     complete reasoning chain that led to it, enabling audit and calibration.
 
     Attributes:
-        question_id: Reference to the input question.
+        forecast_request_id: Reference to the input forecast request.
         probability: The assigned probability of the primary outcome.
         uncertainty: Optional measure of forecast uncertainty.
         confidence_interval: Range for calibration.
-        reasoning: Narrative reasoning for the forecast.
-        logical_trace: Bayesian-style sequence of assumptions.
-        logical_edges: Causal dependencies between nodes.
-        structural_trace: Order of graph nodes executed.
+        reasoning_trace: Narrative reasoning plus a qualified causal graph.
+        execution_trace: Ordered workflow stages executed to produce the result.
         calibration_metrics: Performance metrics.
         metadata: Associated temporal and source metadata.
     """
 
-    question_id: str = Field(..., description="Reference to the input question")
+    model_config = ConfigDict(populate_by_name=True)
+
+    forecast_request_id: str = Field(
+        ...,
+        validation_alias=AliasChoices("forecast_request_id", "question_id"),
+        description="Reference to the input forecast request",
+    )
     probability: float = Field(
         ...,
         alias="confidence",
@@ -201,49 +279,76 @@ class ForecastOutput(BaseModel):
     )
     uncertainty: Optional[float] = Field(None, ge=0, le=1, description="Measure of forecast uncertainty")
     confidence_interval: Optional[ConfidenceInterval] = None
-    reasoning: str = Field(..., description="Narrative reasoning for the forecast")
-    logical_trace: List[CausalNode] = Field(
-        default_factory=list, description="The Bayesian-style sequence of assumptions"
+    reasoning_trace: ReasoningTrace = Field(
+        ...,
+        description="Narrative reasoning trace with a qualified causal graph",
     )
-    logical_edges: List[CausalEdge] = Field(default_factory=list, description="Causal dependencies between nodes")
-    structural_trace: List[str] = Field(default_factory=list, description="Order of graph nodes executed")
+    execution_trace: List[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("execution_trace", "structural_trace"),
+        description="Ordered workflow stages executed for this forecast result",
+    )
     calibration_metrics: Dict[str, Any] = Field(default_factory=dict, description="Performance metrics")
     metadata: MetadataBase = Field(default_factory=MetadataBase)  # type: ignore[arg-type]
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_reasoning_trace_alias(cls, data: Any) -> Any:
-        r"""Accept governance ``reasoning_trace`` as an alias for runtime trace fields."""
-        if not isinstance(data, dict) or "reasoning_trace" not in data:
+    def _normalize_runtime_aliases(cls, data: Any) -> Any:
+        r"""Normalize legacy runtime aliases into the canonical result vocabulary."""
+        if not isinstance(data, dict):
             return data
 
-        trace = data["reasoning_trace"]
         updated = dict(data)
-        if isinstance(trace, dict):
-            if "reasoning" not in updated and isinstance(trace.get("narrative"), str):
-                updated["reasoning"] = trace["narrative"]
+        if "question_id" in updated and "forecast_request_id" not in updated:
+            updated["forecast_request_id"] = updated["question_id"]
+        if "structural_trace" in updated and "execution_trace" not in updated:
+            updated["execution_trace"] = updated["structural_trace"]
 
+        trace = updated.get("reasoning_trace")
+        if isinstance(trace, list):
+            trace = {
+                "narrative": str(updated.get("reasoning", "")),
+                "causal_graph": {
+                    "nodes": trace,
+                    "edges": updated.get("logical_edges", []),
+                },
+            }
+            updated["reasoning_trace"] = trace
+
+        if isinstance(trace, dict):
+            trace_dict = dict(trace)
+            if "narrative" not in trace_dict and isinstance(updated.get("reasoning"), str):
+                trace_dict["narrative"] = updated["reasoning"]
             causal_graph = trace.get("causal_graph")
-            if isinstance(causal_graph, dict):
-                if "logical_trace" not in updated and "nodes" in causal_graph:
-                    updated["logical_trace"] = causal_graph["nodes"]
-                if "logical_edges" not in updated and "edges" in causal_graph:
-                    updated["logical_edges"] = causal_graph["edges"]
-        elif isinstance(trace, list) and "logical_trace" not in updated:
-            updated["logical_trace"] = trace
+            if not isinstance(causal_graph, dict):
+                causal_graph = {}
+            causal_graph = dict(causal_graph)
+            if "nodes" not in causal_graph and "logical_trace" in updated:
+                causal_graph["nodes"] = updated["logical_trace"]
+            if "edges" not in causal_graph and "logical_edges" in updated:
+                causal_graph["edges"] = updated["logical_edges"]
+            trace_dict["causal_graph"] = causal_graph
+            updated["reasoning_trace"] = trace_dict
+        elif any(key in updated for key in ("reasoning", "logical_trace", "logical_edges")):
+            updated["reasoning_trace"] = {
+                "narrative": str(updated.get("reasoning", "")),
+                "causal_graph": {
+                    "nodes": updated.get("logical_trace", []),
+                    "edges": updated.get("logical_edges", []),
+                },
+            }
 
         return updated
 
     @property
-    def reasoning_trace(self) -> Dict[str, Any]:
-        r"""Governance-compatible alias for the narrative and causal graph trace."""
-        return {
-            "narrative": self.reasoning,
-            "causal_graph": {
-                "nodes": [node.model_dump(exclude_none=True) for node in self.logical_trace],
-                "edges": [edge.model_dump(exclude_none=True) for edge in self.logical_edges],
-            },
-        }
+    def question_id(self) -> str:
+        r"""Backward compatibility alias for ``forecast_request_id``."""
+        return self.forecast_request_id
+
+    @question_id.setter
+    def question_id(self, value: str) -> None:
+        r"""Backward compatibility setter for ``forecast_request_id``."""
+        self.forecast_request_id = value
 
     @property
     def confidence(self) -> float:
@@ -255,9 +360,63 @@ class ForecastOutput(BaseModel):
         r"""Backward compatibility setter for probability."""
         self.probability = value
 
+    @property
+    def reasoning(self) -> str:
+        r"""Backward compatibility alias for ``reasoning_trace.narrative``."""
+        return self.reasoning_trace.narrative
+
+    @reasoning.setter
+    def reasoning(self, value: str) -> None:
+        r"""Backward compatibility setter for ``reasoning_trace.narrative``."""
+        self.reasoning_trace.narrative = value
+
+    @property
+    def logical_trace(self) -> List[CausalNode]:
+        r"""Backward compatibility alias for reasoning-trace nodes."""
+        return self.reasoning_trace.causal_graph.nodes
+
+    @logical_trace.setter
+    def logical_trace(self, value: List[CausalNode] | List[Dict[str, Any]]) -> None:
+        r"""Backward compatibility setter for reasoning-trace nodes."""
+        self.reasoning_trace.causal_graph.nodes = [
+            node if isinstance(node, CausalNode) else CausalNode.model_validate(node) for node in value
+        ]
+
+    @property
+    def logical_edges(self) -> List[CausalEdge]:
+        r"""Backward compatibility alias for reasoning-trace edges."""
+        return self.reasoning_trace.causal_graph.edges
+
+    @logical_edges.setter
+    def logical_edges(self, value: List[CausalEdge] | List[Dict[str, Any]]) -> None:
+        r"""Backward compatibility setter for reasoning-trace edges."""
+        self.reasoning_trace.causal_graph.edges = [
+            edge if isinstance(edge, CausalEdge) else CausalEdge.model_validate(edge) for edge in value
+        ]
+
+    @property
+    def forecast_path(self) -> List[CausalNode]:
+        r"""Canonical alias for the ordered reasoning path."""
+        return self.reasoning_trace.forecast_path
+
+    @forecast_path.setter
+    def forecast_path(self, value: List[CausalNode] | List[Dict[str, Any]]) -> None:
+        r"""Canonical setter for the ordered reasoning path."""
+        self.reasoning_trace.forecast_path = value
+
+    @property
+    def structural_trace(self) -> List[str]:
+        r"""Backward compatibility alias for ``execution_trace``."""
+        return self.execution_trace
+
+    @structural_trace.setter
+    def structural_trace(self, value: List[str]) -> None:
+        r"""Backward compatibility setter for ``execution_trace``."""
+        self.execution_trace = list(value)
+
     def to_networkx(self) -> Any:
         r"""
-        Convert the logical trace to a NetworkX directed graph.
+        Convert the reasoning trace to a NetworkX directed graph.
 
         Returns:
             A NetworkX DiGraph representing the reasoning chain.
@@ -287,8 +446,14 @@ class ForecastOutput(BaseModel):
 __all__ = [
     "MetadataBase",
     "ForecastQuestion",
+    "ForecastRequest",
     "CausalNode",
     "CausalEdge",
+    "CausalGraph",
     "ConfidenceInterval",
+    "ReasoningTrace",
     "ForecastOutput",
+    "ForecastResult",
 ]
+
+ForecastResult = ForecastOutput

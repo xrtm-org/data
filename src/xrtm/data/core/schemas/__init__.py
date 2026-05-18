@@ -21,11 +21,15 @@ This module exports all Pydantic schemas used across the xrtm ecosystem.
 
 from xrtm.data.core.schemas.forecast import (
     CausalEdge,
+    CausalGraph,
     CausalNode,
     ConfidenceInterval,
     ForecastOutput,
     ForecastQuestion,
+    ForecastRequest,
+    ForecastResult,
     MetadataBase,
+    ReasoningTrace,
 )
 from xrtm.data.core.schemas.prior import BetaPrior, PriorState
 from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
@@ -34,9 +38,13 @@ __all__ = [
     # Forecast schemas
     "MetadataBase",
     "ForecastQuestion",
+    "ForecastRequest",
     "ForecastOutput",
+    "ForecastResult",
     "CausalNode",
     "CausalEdge",
+    "CausalGraph",
+    "ReasoningTrace",
     "ConfidenceInterval",
     # Prior schemas
     "BetaPrior",

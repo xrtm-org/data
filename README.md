@@ -28,19 +28,28 @@ pip install xrtm-data
 ## Core Primitives
 
 ### 1. The Forecast Object Standard
-Adhering to strict **Governance v1**, the `ForecastOutput` schema mandates that every prediction be accompanied by a structured causal graph (`logical_trace`) and a calibrated confidence interval.
+Adhering to strict Governance, the canonical runtime schema is
+`ForecastResult` (legacy alias: `ForecastOutput`). Every forecast result carries
+`forecast_request_id`, `probability`, a `reasoning_trace`, and an optional
+`execution_trace`. Legacy `question_id`, `reasoning`, `logical_trace`,
+`logical_edges`, and `structural_trace` inputs remain accepted for compatibility.
 
 ```python
-from xrtm.data import ForecastOutput, CausalNode
+from xrtm.data import ForecastResult, CausalNode
 
-prediction = ForecastOutput(
-    question_id="q_123",
+forecast_result = ForecastResult(
+    forecast_request_id="q_123",
     probability=0.75,
-    reasoning="Base rate analysis suggests...",
-    logical_trace=[
-        CausalNode(event="Inflation rises", probability=0.8),
-        CausalNode(event="Fed cuts rates", probability=0.4)
-    ]
+    reasoning_trace={
+        "narrative": "Base rate analysis suggests...",
+        "causal_graph": {
+            "nodes": [
+                CausalNode(event="Inflation rises", probability=0.8),
+                CausalNode(event="Fed cuts rates", probability=0.4),
+            ]
+        },
+    },
+    execution_trace=["ingestion", "forecast"],
 )
 ```
 
@@ -53,7 +62,7 @@ The `MetadataBase` enforces a strict `snapshot_time`. This timestamp represents 
 src/xrtm/data/
 ├── core/            # Interfaces & Schemas (domain-agnostic)
 │   ├── interfaces.py    # DataSource protocol
-│   └── schemas/         # ForecastQuestion, ForecastOutput, etc.
+│   └── schemas/         # ForecastRequest, ForecastResult, etc.
 ├── kit/             # Composable utilities (processors)
 └── providers/       # External data source implementations
     ├── local/           # LocalDataSource (JSON files)
