@@ -155,7 +155,7 @@ class CausalEdge(BaseModel):
 
     source: str = Field(..., description="ID of the source node")
     target: str = Field(..., description="ID of the target node")
-    weight: float = Field(default=1.0, ge=0, le=1, description="Strength of causal relationship")
+    weight: float = Field(default=1.0, ge=-1, le=1, description="Strength of causal relationship (negative = inhibitory)")
     description: Optional[str] = Field(None, description="Context for this causal link")
 
 
