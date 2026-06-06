@@ -27,7 +27,6 @@ Structure:
 
 Example:
     >>> from xrtm.data import ForecastQuestion, DataSource
-    >>> from xrtm.data.providers import LocalDataSource
 """
 
 # Core interfaces

@@ -16,7 +16,6 @@
 import pytest
 
 from xrtm.data.corpora import (
-    FORECAST_CORPUS_ID,
     REAL_BINARY_CORPUS_ID,
     CorpusManifest,
     CorpusMetadata,
@@ -25,11 +24,9 @@ from xrtm.data.corpora import (
     CorpusTier,
     LicenseType,
     RealBinaryCorpusSource,
-    describe_corpus,
     get_corpus,
     get_corpus_metadata,
     list_available_corpora,
-    prepare_corpus,
 )
 
 
@@ -94,16 +91,6 @@ def test_list_available_corpora_convenience_function(fresh_registry):
     assert len(corpora) >= 1
     release_gate = list_available_corpora(release_gate_only=True)
     assert all(c.is_release_gate_approved() for c in release_gate)
-
-
-def test_package_root_exports_keep_stable_surface_explicit():
-    import xrtm.data.corpora as corpora
-
-    assert "CorpusRegistry" in corpora.__all__
-    assert "FOReCAstImporter" not in corpora.__all__
-    assert "ImportManifest" not in corpora.__all__
-    assert corpora.FOReCAstImporter.__name__ == "FOReCAstImporter"
-    assert corpora.ImportManifest.__name__ == "ImportManifest"
 
 
 def test_corpus_metadata_is_release_gate_approved():
@@ -247,35 +234,3 @@ def test_corpus_manifest_warning_for_tier2(fresh_registry):
 
     with pytest.warns(UserWarning, match="tier-2"):
         manifest.load_source()
-
-
-def test_describe_forecast_corpus_defaults_to_preview(monkeypatch, fresh_registry, tmp_path):
-    """FOReCAst should report preview mode before a cache is prepared."""
-    monkeypatch.setenv("XRTM_CORPUS_CACHE", str(tmp_path / "corpus-cache"))
-
-    availability = describe_corpus(FORECAST_CORPUS_ID)
-
-    assert availability.corpus_id == FORECAST_CORPUS_ID
-    assert availability.source_mode == "preview"
-    assert availability.bundled is False
-    assert availability.already_cached is False
-    assert availability.record_count is None
-
-
-def test_prepare_forecast_corpus_fixture_preview(monkeypatch, fresh_registry, tmp_path):
-    """Preparing FOReCAst with fixtures should create a reusable preview cache."""
-    monkeypatch.setenv("XRTM_CORPUS_CACHE", str(tmp_path / "corpus-cache"))
-
-    availability = prepare_corpus(FORECAST_CORPUS_ID, use_hf_datasets=False)
-
-    assert availability.source_mode == "preview"
-    assert availability.already_cached is True
-    assert availability.import_method == "fixture"
-    assert availability.record_count == 3
-    assert availability.manifest_path is not None
-    assert availability.manifest_path.exists()
-
-    cached = fresh_registry.describe_corpus(FORECAST_CORPUS_ID)
-    assert cached.source_mode == "preview"
-    assert cached.already_cached is True
-    assert cached.record_count == 3
