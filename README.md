@@ -1,23 +1,11 @@
-# xrtm-data
+# xrtm-data v0.3.0
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/xrtm-data.svg)](https://pypi.org/project/xrtm-data/)
 
 **The Snapshot Vault for XRTM.**
 
-`xrtm-data` provides the rigid schemas and temporal sandboxing infrastructure required for zero-leakage forecasting. It defines the "Ground Truth" data structures that the rest of the ecosystem (Forecast, Eval, Train) relies on.
-
-## Part of the XRTM Ecosystem
-
-```
-Layer 4: xrtm-train    → (imports all)
-Layer 3: xrtm-forecast → (imports eval, data)
-Layer 2: xrtm-eval     → (imports data)
-Layer 1: xrtm-data     → (zero dependencies) ← YOU ARE HERE
-```
-
-`xrtm-data` is the foundation layer with **zero dependencies** on other xrtm packages.
+`xrtm-data` provides the schemas, question sources, and temporal sandboxing for the XRTM forecasting ecosystem.
 
 ## Installation
 
@@ -25,59 +13,38 @@ Layer 1: xrtm-data     → (zero dependencies) ← YOU ARE HERE
 pip install xrtm-data
 ```
 
-## Core Primitives
+## Schemas
 
-### 1. The Forecast Object Standard
-Adhering to strict Governance, the canonical runtime schema is
-`ForecastResult` (legacy alias: `ForecastOutput`). Every forecast result carries
-`forecast_request_id`, `probability`, a `reasoning_trace`, and an optional
-`execution_trace`. Legacy `question_id`, `reasoning`, `logical_trace`,
-`logical_edges`, and `structural_trace` inputs remain accepted for compatibility.
+- **`ForecastQuestion`** — Standardized forecast question input
+- **`ForecastOutput`** (alias `ForecastResult`) — Forecast result with probability, reasoning trace, causal graph
+- **`CausalNode` / `CausalEdge` / `CausalGraph`** — Reasoning chain DAG
+- **`BetaPrior` / `PriorState`** — Beta distribution for belief states
+- **`TradeEvent` / `TradeWindow`** — Market trade data with temporal integrity
+
+## Question Sources
+
+| Source | API Key | Description |
+|--------|---------|-------------|
+| **real-binary** | None | 21 embedded historical binary questions (CI fixture) |
+| **Polymarket** | None (public) | Live prediction market data via Gamma API |
+| **Metaculus** | Free account | Forecasting questions from Metaculus |
 
 ```python
-from xrtm.data import ForecastResult, CausalNode
+from xrtm.data.corpora import load_real_binary_questions
+from xrtm.data.providers.online import PolymarketSource, MetaculusSource
 
-forecast_result = ForecastResult(
-    forecast_request_id="q_123",
-    probability=0.75,
-    reasoning_trace={
-        "narrative": "Base rate analysis suggests...",
-        "causal_graph": {
-            "nodes": [
-                CausalNode(event="Inflation rises", probability=0.8),
-                CausalNode(event="Fed cuts rates", probability=0.4),
-            ]
-        },
-    },
-    execution_trace=["ingestion", "forecast"],
-)
+# Built-in corpus
+questions = load_real_binary_questions(limit=5)
+
+# Live prediction markets (no API key)
+poly = PolymarketSource()
+markets = await poly.fetch_questions(limit=10)
+
+# Metaculus (needs METACULUS_API_KEY)
+meta = MetaculusSource()
+meta_qs = await meta.fetch_questions(limit=10)
 ```
 
-### 2. Zero Leakage
-The `MetadataBase` enforces a strict `snapshot_time`. This timestamp represents the "End of History" for the model. Any data point generated after this time is considered "Future Leakage" and is programmatically inaccessible during backtesting.
+## License
 
-## Project Structure
-
-```
-src/xrtm/data/
-├── core/            # Interfaces & Schemas (domain-agnostic)
-│   ├── interfaces.py    # DataSource protocol
-│   └── schemas/         # ForecastRequest, ForecastResult, etc.
-├── kit/             # Composable utilities (processors)
-└── providers/       # External data source implementations
-    ├── local/           # LocalDataSource (JSON files)
-    └── online/          # PolymarketSource (Gamma API)
-```
-
-## Development
-
-Prerequisites:
-- [uv](https://github.com/astral-sh/uv)
-
-```bash
-# Install dependencies
-uv sync
-
-# Run tests
-uv run pytest
-```
+Apache 2.0
