@@ -34,6 +34,9 @@ from xrtm.data.corpora import load_real_binary_questions
 from xrtm.data.providers.online import PolymarketSource, MetaculusSource
 
 # Built-in corpus
+
+[![PyPI](https://img.shields.io/pypi/v/xrtm-data?style=flat-square)](https://pypi.org/project/xrtm-data/)
+
 questions = load_real_binary_questions(limit=5)
 
 # Live prediction markets (no API key)
