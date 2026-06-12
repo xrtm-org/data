@@ -1,5 +1,7 @@
 # xrtm-data v0.3.0
 
+[![PyPI](https://img.shields.io/pypi/v/xrtm-data?style=flat-square)](https://pypi.org/project/xrtm-data/)
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -35,7 +37,6 @@ from xrtm.data.providers.online import PolymarketSource, MetaculusSource
 
 # Built-in corpus
 
-[![PyPI](https://img.shields.io/pypi/v/xrtm-data?style=flat-square)](https://pypi.org/project/xrtm-data/)
 
 questions = load_real_binary_questions(limit=5)
 
