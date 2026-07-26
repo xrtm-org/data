@@ -111,6 +111,10 @@ class ForecastQuestion(BaseModel):
         description="Detailed context and background",
     )
     resolution_criteria: Optional[str] = Field(None, description="Explicit rules for ground truth determination")
+    context: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional market context or metadata injected by downstream consumers (e.g., price, volume, spread)",
+    )
     metadata: MetadataBase = Field(default_factory=MetadataBase)  # type: ignore[arg-type]
 
     @property

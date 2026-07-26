@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from xrtm.data import CausalEdge, CausalNode, ForecastOutput, ForecastResult, MetadataBase
+from xrtm.data import CausalEdge, CausalNode, ForecastOutput, ForecastQuestion, ForecastResult, MetadataBase
 from xrtm.data.core.schemas import TradeEvent, TradeWindow
 
 
@@ -172,3 +172,33 @@ def test_trade_window_normalizes_naive_boundaries_and_timestamps():
 
     assert window.start_time.tzinfo == timezone.utc
     assert window.trades[0].timestamp.tzinfo == timezone.utc
+
+
+def test_forecast_question_context_field():
+    """ForecastQuestion accepts an optional context dict for market metadata."""
+    q = ForecastQuestion(
+        id="q1",
+        title="Will market X exceed $100?",
+        context={"market_price": 0.55, "volume_24h": 150000, "spread": 0.02},
+    )
+    assert q.context == {"market_price": 0.55, "volume_24h": 150000, "spread": 0.02}
+
+
+def test_forecast_question_context_defaults_to_none():
+    """ForecastQuestion context is None by default for backward compatibility."""
+    q = ForecastQuestion(id="q2", title="Simple question")
+    assert q.context is None
+
+
+def test_forecast_question_context_serializes():
+    """Context field serializes to JSON and round-trips correctly."""
+    q = ForecastQuestion(
+        id="q3",
+        title="Serialization test",
+        context={"key": "value", "nested": {"a": 1}},
+    )
+    payload = q.model_dump(mode="json")
+    assert payload["context"] == {"key": "value", "nested": {"a": 1}}
+
+    reloaded = ForecastQuestion.model_validate(payload)
+    assert reloaded.context == {"key": "value", "nested": {"a": 1}}
