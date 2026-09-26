@@ -86,43 +86,65 @@ class KalshiSource(DataSource, ResolutionSource):
             return None
 
     async def fetch_resolved(
-        self, limit: int = 50, *, since: Optional[datetime] = None
+        self, limit: int = 50, *, since: Optional[datetime] = None, max_pages: int = 5
     ) -> List[ResolvedQuestion]:
-        r"""Fetch settled markets from Kalshi."""
-        data = self._get_json(f"{self.api_base}/markets?limit={min(max(limit, 20), 200)}&status=settled")
-        items = data.get("markets", []) if isinstance(data, dict) else data
+        r"""Fetch settled markets from Kalshi.
 
+        Paginates with the API ``cursor`` until ``limit`` is reached, pages are
+        exhausted, or ``max_pages`` is hit.
+        """
+        page_size = min(200, max(limit, 50))
+        cursor = ""
         resolved: List[ResolvedQuestion] = []
-        for item in items:
-            outcome = _kalshi_outcome(item.get("result"))
-            if outcome is None:
-                continue
-            resolved_at = _parse_ts(item.get("close_time") or item.get("expiration_time"))
-            if since is not None and resolved_at < since:
-                continue
-            ticker = str(item.get("ticker", ""))
-            resolved.append(
-                ResolvedQuestion(
-                    question_id=f"kalshi-{ticker}",
-                    venue="kalshi",
-                    title=str(item.get("title", ""))[:500],
-                    outcome=outcome,
-                    resolved_at=resolved_at,
-                    url=f"https://kalshi.com/markets/{ticker}",
-                    metadata=MetadataBase(
-                        source_version="kalshi",
-                        tags=["kalshi", "prediction-market"],
-                        raw_data={
-                            "ticker": ticker,
-                            "event_ticker": item.get("event_ticker"),
-                            "result": item.get("result"),
-                            "volume": item.get("volume"),
-                        },
-                    ),
-                )
-            )
-            if len(resolved) >= limit:
+        seen: set[str] = set()
+
+        for _ in range(max(1, max_pages)):
+            url = f"{self.api_base}/markets?limit={page_size}&status=settled"
+            if cursor:
+                url += f"&cursor={cursor}"
+            data = self._get_json(url)
+            items = data.get("markets", []) if isinstance(data, dict) else data
+            if not items:
                 break
+
+            for item in items:
+                outcome = _kalshi_outcome(item.get("result"))
+                if outcome is None:
+                    continue
+                resolved_at = _parse_ts(item.get("close_time") or item.get("expiration_time"))
+                if since is not None and resolved_at < since:
+                    continue
+                ticker = str(item.get("ticker", ""))
+                if ticker in seen:
+                    continue
+                seen.add(ticker)
+                resolved.append(
+                    ResolvedQuestion(
+                        question_id=f"kalshi-{ticker}",
+                        venue="kalshi",
+                        title=str(item.get("title", ""))[:500],
+                        outcome=outcome,
+                        resolved_at=resolved_at,
+                        url=f"https://kalshi.com/markets/{ticker}",
+                        metadata=MetadataBase(
+                            source_version="kalshi",
+                            tags=["kalshi", "prediction-market"],
+                            raw_data={
+                                "ticker": ticker,
+                                "event_ticker": item.get("event_ticker"),
+                                "result": item.get("result"),
+                                "volume": item.get("volume"),
+                            },
+                        ),
+                    )
+                )
+                if len(resolved) >= limit:
+                    return resolved
+
+            cursor = str(data.get("cursor") or "") if isinstance(data, dict) else ""
+            if not cursor:
+                break
+
         return resolved
 
     def _get_json(self, url: str) -> Any:

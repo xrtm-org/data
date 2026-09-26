@@ -111,14 +111,18 @@ class ResolutionSource(abc.ABC):
 
     @abc.abstractmethod
     async def fetch_resolved(
-        self, limit: int = 50, *, since: Optional[datetime] = None
+        self, limit: int = 50, *, since: Optional[datetime] = None, max_pages: int = 5
     ) -> List[ResolvedQuestion]:
         r"""
         Fetch recently resolved questions with their outcomes.
 
+        Implementations paginate internally up to ``max_pages`` so callers can
+        request large backfills (e.g. ``limit=500``) in one call.
+
         Args:
             limit: Maximum number of resolutions to return.
             since: Optional lower bound on resolution time (UTC).
+            max_pages: Maximum upstream pages to fetch.
 
         Returns:
             List of ResolvedQuestion objects.
