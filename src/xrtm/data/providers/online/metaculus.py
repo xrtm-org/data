@@ -31,15 +31,16 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-from xrtm.data.core.interfaces import DataSource, DataSourceError
+from xrtm.data.core.interfaces import DataSource, DataSourceError, ResolutionSource
 from xrtm.data.core.schemas.forecast import ForecastQuestion, MetadataBase
+from xrtm.data.core.schemas.resolution import ResolvedQuestion
 
 logger = logging.getLogger(__name__)
 
 METACULUS_API_BASE = "https://www.metaculus.com/api2"
 
 
-class MetaculusSource(DataSource):
+class MetaculusSource(DataSource, ResolutionSource):
     r"""Data source for Metaculus forecasting questions.
 
     Fetches open binary questions from the Metaculus API.
@@ -103,6 +104,84 @@ class MetaculusSource(DataSource):
         except Exception as exc:
             logger.warning(f"Metaculus question {question_id} not found: {exc}")
             return None
+
+    async def fetch_resolved(
+        self, limit: int = 50, *, since: "datetime | None" = None
+    ) -> list[ResolvedQuestion]:
+        r"""Fetch recently resolved binary questions from Metaculus.
+
+        Requires an API key. Metaculus binary resolutions are 1.0 (yes) or
+        0.0 (no); annulled/ambiguous resolutions are skipped.
+        """
+        if not self.api_key:
+            raise DataSourceError("Metaculus API key required for resolutions")
+
+        url = (
+            f"{self.api_base}/questions/?"
+            f"limit={min(max(limit, 20), 100)}&order_by=-resolve_time&status=resolved&type=binary"
+        )
+        data = self._get_json(url)
+        results = data.get("results", [])
+
+        resolved: list[ResolvedQuestion] = []
+        for item in results:
+            outcome = self._metaculus_outcome(item.get("resolution"))
+            if outcome is None:
+                continue
+            resolved_at = self._parse_iso(item.get("resolve_time") or item.get("close_time"))
+            if since is not None and resolved_at < since:
+                continue
+
+            qid = str(item.get("id", ""))
+            resolved.append(
+                ResolvedQuestion(
+                    question_id=f"metaculus-{qid}",
+                    venue="metaculus",
+                    title=str(item.get("title", ""))[:500],
+                    outcome=outcome,
+                    resolved_at=resolved_at,
+                    url=f"https://www.metaculus.com/questions/{qid}/",
+                    metadata=MetadataBase(
+                        source_version="metaculus",
+                        tags=["metaculus", "binary"],
+                        raw_data={"metaculus_id": qid, "resolution": item.get("resolution")},
+                    ),
+                )
+            )
+            if len(resolved) >= limit:
+                break
+        return resolved
+
+    @staticmethod
+    def _metaculus_outcome(resolution: Any) -> "float | None":
+        r"""Map a Metaculus resolution value to 1.0 (yes) / 0.0 (no) / None."""
+        if resolution is None:
+            return None
+        if isinstance(resolution, bool):
+            return 1.0 if resolution else 0.0
+        if isinstance(resolution, (int, float)):
+            if float(resolution) == 1.0:
+                return 1.0
+            if float(resolution) == 0.0:
+                return 0.0
+            return None
+        normalized = str(resolution).strip().lower()
+        if normalized in ("yes", "true", "1"):
+            return 1.0
+        if normalized in ("no", "false", "0"):
+            return 0.0
+        return None
+
+    @staticmethod
+    def _parse_iso(value: Any) -> datetime:
+        r"""Parse an ISO-8601 timestamp into UTC (now when missing/invalid)."""
+        if value is None:
+            return datetime.now(timezone.utc)
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return datetime.now(timezone.utc)
 
     def _get_json(self, url: str) -> dict[str, Any]:
         r"""Fetch JSON from a URL."""

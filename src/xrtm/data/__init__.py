@@ -46,6 +46,7 @@ from xrtm.data.core.schemas import (
     MarketSnapshot,
     MetadataBase,
     ReasoningTrace,
+    ResolvedQuestion,
     TokenUsage,
 )
 
@@ -69,4 +70,5 @@ __all__ = [
     "TokenUsage",
     "ForecastProvenance",
     "MarketSnapshot",
+    "ResolvedQuestion",
 ]

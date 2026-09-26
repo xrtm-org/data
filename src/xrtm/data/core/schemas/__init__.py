@@ -35,6 +35,7 @@ from xrtm.data.core.schemas.forecast import (
 )
 from xrtm.data.core.schemas.market import MarketSnapshot
 from xrtm.data.core.schemas.prior import BetaPrior, PriorState
+from xrtm.data.core.schemas.resolution import ResolvedQuestion
 from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
 
 __all__ = [
@@ -53,6 +54,8 @@ __all__ = [
     "ForecastProvenance",
     # Market schemas
     "MarketSnapshot",
+    # Resolution schemas
+    "ResolvedQuestion",
     # Prior schemas
     "BetaPrior",
     "PriorState",

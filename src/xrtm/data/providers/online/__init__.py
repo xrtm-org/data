@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-r"""Online data providers (Metaculus, Polymarket, etc.)."""
+r"""Online data providers (Metaculus, Polymarket, Manifold, Kalshi)."""
 
+from xrtm.data.providers.online.kalshi import KalshiSource
+from xrtm.data.providers.online.manifold import ManifoldSource
 from xrtm.data.providers.online.metaculus import MetaculusSource
 from xrtm.data.providers.online.polymarket import PolymarketSource
 
-__all__ = ["MetaculusSource", "PolymarketSource"]
+__all__ = ["MetaculusSource", "PolymarketSource", "ManifoldSource", "KalshiSource"]
