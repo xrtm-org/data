@@ -16,7 +16,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from xrtm.data import CausalEdge, CausalNode, ForecastOutput, ForecastQuestion, ForecastResult, MetadataBase
+from xrtm.data import (
+    CausalEdge,
+    CausalNode,
+    ForecastOutput,
+    ForecastProvenance,
+    ForecastQuestion,
+    ForecastResult,
+    MetadataBase,
+    TokenUsage,
+)
 from xrtm.data.core.schemas import TradeEvent, TradeWindow
 
 
@@ -202,3 +211,56 @@ def test_forecast_question_context_serializes():
 
     reloaded = ForecastQuestion.model_validate(payload)
     assert reloaded.context == {"key": "value", "nested": {"a": 1}}
+
+
+def test_token_usage_derives_total():
+    """total_tokens is derived when a producer omits it."""
+    usage = TokenUsage(prompt_tokens=1200, completion_tokens=300)
+    assert usage.total_tokens == 1500
+
+
+def test_token_usage_preserves_explicit_total():
+    """An explicit total_tokens from the provider is not overwritten."""
+    usage = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=99)
+    assert usage.total_tokens == 99
+
+
+def test_forecast_output_telemetry_defaults():
+    """Telemetry fields are optional and safe for legacy producers."""
+    output = ForecastOutput(question_id="q_telemetry", probability=0.5, reasoning="legacy")
+    assert output.parse_status == "unknown"
+    assert output.usage.total_tokens == 0
+    assert output.provenance is None
+
+
+def test_forecast_output_telemetry_round_trip():
+    """Telemetry survives JSON serialization and re-validation."""
+    output = ForecastOutput(
+        forecast_request_id="q_telemetry_2",
+        probability=0.72,
+        reasoning="telemetry round trip",
+        parse_status="ok",
+        usage=TokenUsage(
+            prompt_tokens=900,
+            completion_tokens=250,
+            cached_prompt_tokens=800,
+            reasoning_tokens=120,
+        ),
+        provenance=ForecastProvenance(
+            provider="deepseek",
+            model_id="deepseek-flash",
+            prompt_id="analyst-v2",
+            temperature=0.2,
+            thinking=False,
+            cache_hit=False,
+        ),
+    )
+    payload = output.model_dump(mode="json")
+    assert payload["parse_status"] == "ok"
+    assert payload["usage"]["total_tokens"] == 1150
+    assert payload["provenance"]["model_id"] == "deepseek-flash"
+
+    reloaded = ForecastOutput.model_validate(payload)
+    assert reloaded.usage.cached_prompt_tokens == 800
+    assert reloaded.provenance is not None
+    assert reloaded.provenance.provider == "deepseek"

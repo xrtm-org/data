@@ -178,6 +178,57 @@ class ConfidenceInterval(BaseModel):
     level: float = Field(0.9, ge=0, le=1, description="Confidence level")
 
 
+class TokenUsage(BaseModel):
+    r"""
+    Token accounting for a single forecast or inference run.
+
+    Attributes:
+        prompt_tokens: Total input tokens billed for this run.
+        completion_tokens: Total output tokens billed for this run.
+        cached_prompt_tokens: Input tokens served from a provider prefix cache.
+        reasoning_tokens: Output tokens spent on chain-of-thought reasoning.
+        total_tokens: Total billed tokens (prompt + completion).
+    """
+
+    prompt_tokens: int = Field(default=0, ge=0, description="Total input tokens billed for this run")
+    completion_tokens: int = Field(default=0, ge=0, description="Total output tokens billed for this run")
+    cached_prompt_tokens: int = Field(default=0, ge=0, description="Input tokens served from a provider prefix cache")
+    reasoning_tokens: int = Field(default=0, ge=0, description="Output tokens spent on chain-of-thought reasoning")
+    total_tokens: int = Field(default=0, ge=0, description="Total billed tokens (prompt + completion)")
+
+    @model_validator(mode="after")
+    def _fill_total_tokens(self) -> "TokenUsage":
+        r"""Derive ``total_tokens`` when a producer did not provide it."""
+        if self.total_tokens == 0:
+            self.total_tokens = self.prompt_tokens + self.completion_tokens
+        return self
+
+
+class ForecastProvenance(BaseModel):
+    r"""
+    Operational provenance for a forecast: which engine, model, and prompt produced it.
+
+    Attributes:
+        provider: Inference provider family (e.g. ``"deepseek"``, ``"typesafe"``).
+        model_id: Model identifier as requested (e.g. ``"deepseek-flash"``).
+        model_version: Model version or checkpoint reported by the provider.
+        prompt_id: Identifier or version of the prompt template used.
+        temperature: Sampling temperature used for the run.
+        thinking: Whether provider reasoning/thinking mode was enabled.
+        cache_hit: True when the result was served from a cache.
+        run_id: Identifier shared by all calls belonging to one forecast run.
+    """
+
+    provider: Optional[str] = Field(default=None, description="Inference provider family (e.g. 'deepseek')")
+    model_id: Optional[str] = Field(default=None, description="Model identifier as requested")
+    model_version: Optional[str] = Field(default=None, description="Model version or checkpoint reported by the provider")
+    prompt_id: Optional[str] = Field(default=None, description="Identifier or version of the prompt template used")
+    temperature: Optional[float] = Field(default=None, description="Sampling temperature used for the run")
+    thinking: Optional[bool] = Field(default=None, description="Whether provider reasoning/thinking mode was enabled")
+    cache_hit: bool = Field(default=False, description="True when the result was served from a cache")
+    run_id: Optional[str] = Field(default=None, description="Identifier shared by all calls belonging to one forecast run")
+
+
 class MappingCompatibleModel(BaseModel):
     r"""Base model with lightweight dict-style compatibility helpers."""
 
@@ -293,6 +344,16 @@ class ForecastOutput(BaseModel):
         description="Ordered workflow stages executed for this forecast result",
     )
     calibration_metrics: Dict[str, Any] = Field(default_factory=dict, description="Performance metrics")
+    parse_status: str = Field(
+        default="unknown",
+        description="Parse outcome for the model output: 'ok', 'empty_content', 'invalid_json', "
+        "'schema_error', 'provider_error', or 'unknown'.",
+    )
+    usage: TokenUsage = Field(default_factory=TokenUsage, description="Token accounting for this forecast")
+    provenance: Optional[ForecastProvenance] = Field(
+        default=None,
+        description="Model and prompt provenance for this forecast",
+    )
     metadata: MetadataBase = Field(default_factory=MetadataBase)  # type: ignore[arg-type]
 
     @model_validator(mode="before")
@@ -458,6 +519,8 @@ __all__ = [
     "ReasoningTrace",
     "ForecastOutput",
     "ForecastResult",
+    "TokenUsage",
+    "ForecastProvenance",
 ]
 
 ForecastResult = ForecastOutput
