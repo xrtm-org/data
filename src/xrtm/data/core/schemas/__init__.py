@@ -25,11 +25,13 @@ from xrtm.data.core.schemas.forecast import (
     CausalNode,
     ConfidenceInterval,
     ForecastOutput,
+    ForecastProvenance,
     ForecastQuestion,
     ForecastRequest,
     ForecastResult,
     MetadataBase,
     ReasoningTrace,
+    TokenUsage,
 )
 from xrtm.data.core.schemas.prior import BetaPrior, PriorState
 from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
@@ -46,6 +48,8 @@ __all__ = [
     "CausalGraph",
     "ReasoningTrace",
     "ConfidenceInterval",
+    "TokenUsage",
+    "ForecastProvenance",
     # Prior schemas
     "BetaPrior",
     "PriorState",

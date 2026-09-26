@@ -39,11 +39,13 @@ from xrtm.data.core.schemas import (
     CausalNode,
     ConfidenceInterval,
     ForecastOutput,
+    ForecastProvenance,
     ForecastQuestion,
     ForecastRequest,
     ForecastResult,
     MetadataBase,
     ReasoningTrace,
+    TokenUsage,
 )
 
 __all__ = [
@@ -63,4 +65,6 @@ __all__ = [
     "CausalGraph",
     "ReasoningTrace",
     "ConfidenceInterval",
+    "TokenUsage",
+    "ForecastProvenance",
 ]
