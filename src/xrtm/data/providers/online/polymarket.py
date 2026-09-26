@@ -107,48 +107,65 @@ class PolymarketSource(DataSource, ResolutionSource):
             return None
 
     async def fetch_resolved(
-        self, limit: int = 50, *, since: "datetime | None" = None
+        self, limit: int = 50, *, since: "datetime | None" = None, max_pages: int = 5
     ) -> list[ResolvedQuestion]:
         r"""Fetch recently closed Polymarket markets with their outcomes.
+
+        Paginates the Gamma API (``offset``) until ``limit`` is reached, pages
+        are exhausted, items fall before ``since``, or ``max_pages`` is hit.
 
         A closed market's ``outcomePrices`` converge to ``["1","0"]`` (YES) or
         ``["0","1"]`` (NO); anything above 0.5 on the first outcome counts as YES.
         """
-        url = (
-            f"{self.api_base}/markets?"
-            f"limit={min(max(limit * 2, 20), 100)}&closed=true&order=endDate&ascending=false"
-        )
-        data = self._get_json(url)
-        items = data if isinstance(data, list) else data.get("markets", data.get("results", []))
-
+        page_size = min(100, max(limit, 20))
         resolved: list[ResolvedQuestion] = []
-        for item in items:
-            prices = self._coerce_prices(item.get("outcomePrices"))
-            if len(prices) < 2:
-                continue
-            outcome = 1.0 if prices[0] > 0.5 else 0.0
-            resolved_at = self._parse_iso(item.get("endDate") or item.get("closedTime"))
-            if since is not None and resolved_at < since:
-                continue
+        seen_ids: set[str] = set()
 
-            market_id = str(item.get("id", ""))
-            resolved.append(
-                ResolvedQuestion(
-                    question_id=f"polymarket-{market_id}",
-                    venue="polymarket",
-                    title=str(item.get("question", ""))[:500],
-                    outcome=outcome,
-                    resolved_at=resolved_at,
-                    url=f"https://polymarket.com/event/{item.get('slug', market_id)}",
-                    metadata=MetadataBase(
-                        source_version="polymarket",
-                        tags=["polymarket", "binary", "prediction-market"],
-                        raw_data={"polymarket_id": market_id, "outcome_prices": prices},
-                    ),
-                )
+        for page in range(max(1, max_pages)):
+            url = (
+                f"{self.api_base}/markets?"
+                f"limit={page_size}&offset={page * page_size}&closed=true&order=endDate&ascending=false"
             )
-            if len(resolved) >= limit:
+            data = self._get_json(url)
+            items = data if isinstance(data, list) else data.get("markets", data.get("results", []))
+            if not items:
                 break
+
+            stop = False
+            for item in items:
+                prices = self._coerce_prices(item.get("outcomePrices"))
+                if len(prices) < 2:
+                    continue
+                resolved_at = self._parse_iso(item.get("endDate") or item.get("closedTime"))
+                if since is not None and resolved_at < since:
+                    stop = True
+                    continue
+
+                market_id = str(item.get("id", ""))
+                if market_id in seen_ids:
+                    continue
+                seen_ids.add(market_id)
+                resolved.append(
+                    ResolvedQuestion(
+                        question_id=f"polymarket-{market_id}",
+                        venue="polymarket",
+                        title=str(item.get("question", ""))[:500],
+                        outcome=1.0 if prices[0] > 0.5 else 0.0,
+                        resolved_at=resolved_at,
+                        url=f"https://polymarket.com/event/{item.get('slug', market_id)}",
+                        metadata=MetadataBase(
+                            source_version="polymarket",
+                            tags=["polymarket", "binary", "prediction-market"],
+                            raw_data={"polymarket_id": market_id, "outcome_prices": prices},
+                        ),
+                    )
+                )
+                if len(resolved) >= limit:
+                    return resolved
+
+            if stop or len(items) < page_size:
+                break
+
         return resolved
 
     @staticmethod

@@ -86,43 +86,66 @@ class ManifoldSource(DataSource, ResolutionSource):
             return None
 
     async def fetch_resolved(
-        self, limit: int = 50, *, since: Optional[datetime] = None
+        self, limit: int = 50, *, since: Optional[datetime] = None, max_pages: int = 5
     ) -> List[ResolvedQuestion]:
-        r"""Fetch recently resolved binary markets from Manifold."""
-        data = self._get_json(f"{self.api_base}/markets?limit={min(max(limit * 4, 100), 1000)}")
-        items = data if isinstance(data, list) else data.get("markets", [])
+        r"""Fetch recently resolved binary markets from Manifold.
 
+        Paginates with the ``before`` cursor until ``limit`` is reached, pages
+        are exhausted, or ``max_pages`` is hit.
+        """
         resolved: List[ResolvedQuestion] = []
-        for item in items:
-            if not item.get("isResolved"):
-                continue
-            outcome = _manifold_outcome(item.get("resolution"))
-            if outcome is None:
-                continue
-            resolved_at = _parse_ts(item.get("resolutionTime"))
-            if since is not None and resolved_at < since:
-                continue
-            resolved.append(
-                ResolvedQuestion(
-                    question_id=f"manifold-{item.get('id')}",
-                    venue="manifold",
-                    title=str(item.get("question", ""))[:500],
-                    outcome=outcome,
-                    resolved_at=resolved_at,
-                    url=item.get("url"),
-                    metadata=MetadataBase(
-                        source_version="manifold",
-                        tags=["manifold", "prediction-market"],
-                        raw_data={
-                            "manifold_id": item.get("id"),
-                            "resolution": item.get("resolution"),
-                            "volume": item.get("volume"),
-                        },
-                    ),
-                )
-            )
-            if len(resolved) >= limit:
+        seen: set[str] = set()
+        before: Optional[str] = None
+        page_size = min(1000, max(limit * 2, 100))
+
+        for _ in range(max(1, max_pages)):
+            url = f"{self.api_base}/markets?limit={page_size}"
+            if before:
+                url += f"&before={before}"
+            data = self._get_json(url)
+            items = data if isinstance(data, list) else data.get("markets", [])
+            if not items:
                 break
+
+            for item in items:
+                if not item.get("isResolved"):
+                    continue
+                outcome = _manifold_outcome(item.get("resolution"))
+                if outcome is None:
+                    continue
+                resolved_at = _parse_ts(item.get("resolutionTime"))
+                if since is not None and resolved_at < since:
+                    continue
+                market_id = str(item.get("id", ""))
+                if market_id in seen:
+                    continue
+                seen.add(market_id)
+                resolved.append(
+                    ResolvedQuestion(
+                        question_id=f"manifold-{market_id}",
+                        venue="manifold",
+                        title=str(item.get("question", ""))[:500],
+                        outcome=outcome,
+                        resolved_at=resolved_at,
+                        url=item.get("url"),
+                        metadata=MetadataBase(
+                            source_version="manifold",
+                            tags=["manifold", "prediction-market"],
+                            raw_data={
+                                "manifold_id": market_id,
+                                "resolution": item.get("resolution"),
+                                "volume": item.get("volume"),
+                            },
+                        ),
+                    )
+                )
+                if len(resolved) >= limit:
+                    return resolved
+
+            before = str(items[-1].get("id") or "") or None
+            if not before:
+                break
+
         return resolved
 
     def _get_json(self, url: str) -> Any:

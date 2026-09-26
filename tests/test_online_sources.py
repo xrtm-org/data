@@ -116,3 +116,59 @@ async def test_metaculus_fetch_resolved_requires_api_key():
     source = MetaculusSource(api_key="")
     with pytest.raises(DataSourceError):
         await source.fetch_resolved(limit=5)
+
+
+@pytest.mark.asyncio
+async def test_polymarket_fetch_resolved_paginates(monkeypatch):
+    source = PolymarketSource()
+
+    def fake(url: str):
+        page_size = int(url.split("limit=")[1].split("&")[0])
+        offset = int(url.split("offset=")[1].split("&")[0])
+        return [
+            {
+                "id": str(index),
+                "question": f"Q{index}",
+                "outcomePrices": '["1", "0"]',
+                "endDate": "2026-09-20T12:00:00Z",
+            }
+            for index in range(offset, offset + page_size)
+        ]
+
+    monkeypatch.setattr(source, "_get_json", fake)
+    resolved = await source.fetch_resolved(limit=150)
+
+    assert len(resolved) == 150
+    assert resolved[0].question_id == "polymarket-0"
+    assert resolved[-1].question_id == "polymarket-149"
+
+
+@pytest.mark.asyncio
+async def test_kalshi_fetch_resolved_paginates_cursor(monkeypatch):
+    source = KalshiSource()
+    calls = {"count": 0}
+
+    def fake(url: str):
+        calls["count"] += 1
+        if "cursor=" in url:
+            start, cursor = 200, ""
+        else:
+            start, cursor = 0, "next-page"
+        return {
+            "markets": [
+                {
+                    "ticker": f"T{index}",
+                    "title": f"Q{index}",
+                    "result": "yes",
+                    "close_time": "2026-09-20T12:00:00Z",
+                }
+                for index in range(start, start + 200)
+            ],
+            "cursor": cursor,
+        }
+
+    monkeypatch.setattr(source, "_get_json", fake)
+    resolved = await source.fetch_resolved(limit=250)
+
+    assert len(resolved) == 250
+    assert calls["count"] == 2

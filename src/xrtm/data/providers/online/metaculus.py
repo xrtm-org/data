@@ -106,50 +106,64 @@ class MetaculusSource(DataSource, ResolutionSource):
             return None
 
     async def fetch_resolved(
-        self, limit: int = 50, *, since: "datetime | None" = None
+        self, limit: int = 50, *, since: "datetime | None" = None, max_pages: int = 5
     ) -> list[ResolvedQuestion]:
         r"""Fetch recently resolved binary questions from Metaculus.
 
-        Requires an API key. Metaculus binary resolutions are 1.0 (yes) or
-        0.0 (no); annulled/ambiguous resolutions are skipped.
+        Requires an API key. Paginates with ``offset`` until ``limit`` is
+        reached, pages are exhausted, or ``max_pages`` is hit. Metaculus binary
+        resolutions are 1.0 (yes) or 0.0 (no); annulled/ambiguous ones are skipped.
         """
         if not self.api_key:
             raise DataSourceError("Metaculus API key required for resolutions")
 
-        url = (
-            f"{self.api_base}/questions/?"
-            f"limit={min(max(limit, 20), 100)}&order_by=-resolve_time&status=resolved&type=binary"
-        )
-        data = self._get_json(url)
-        results = data.get("results", [])
-
+        page_size = min(100, max(limit, 20))
         resolved: list[ResolvedQuestion] = []
-        for item in results:
-            outcome = self._metaculus_outcome(item.get("resolution"))
-            if outcome is None:
-                continue
-            resolved_at = self._parse_iso(item.get("resolve_time") or item.get("close_time"))
-            if since is not None and resolved_at < since:
-                continue
+        seen: set[str] = set()
 
-            qid = str(item.get("id", ""))
-            resolved.append(
-                ResolvedQuestion(
-                    question_id=f"metaculus-{qid}",
-                    venue="metaculus",
-                    title=str(item.get("title", ""))[:500],
-                    outcome=outcome,
-                    resolved_at=resolved_at,
-                    url=f"https://www.metaculus.com/questions/{qid}/",
-                    metadata=MetadataBase(
-                        source_version="metaculus",
-                        tags=["metaculus", "binary"],
-                        raw_data={"metaculus_id": qid, "resolution": item.get("resolution")},
-                    ),
-                )
+        for page in range(max(1, max_pages)):
+            url = (
+                f"{self.api_base}/questions/?"
+                f"limit={page_size}&offset={page * page_size}"
+                f"&order_by=-resolve_time&status=resolved&type=binary"
             )
-            if len(resolved) >= limit:
+            data = self._get_json(url)
+            results = data.get("results", [])
+            if not results:
                 break
+
+            for item in results:
+                outcome = self._metaculus_outcome(item.get("resolution"))
+                if outcome is None:
+                    continue
+                resolved_at = self._parse_iso(item.get("resolve_time") or item.get("close_time"))
+                if since is not None and resolved_at < since:
+                    continue
+                qid = str(item.get("id", ""))
+                if qid in seen:
+                    continue
+                seen.add(qid)
+                resolved.append(
+                    ResolvedQuestion(
+                        question_id=f"metaculus-{qid}",
+                        venue="metaculus",
+                        title=str(item.get("title", ""))[:500],
+                        outcome=outcome,
+                        resolved_at=resolved_at,
+                        url=f"https://www.metaculus.com/questions/{qid}/",
+                        metadata=MetadataBase(
+                            source_version="metaculus",
+                            tags=["metaculus", "binary"],
+                            raw_data={"metaculus_id": qid, "resolution": item.get("resolution")},
+                        ),
+                    )
+                )
+                if len(resolved) >= limit:
+                    return resolved
+
+            if len(results) < page_size:
+                break
+
         return resolved
 
     @staticmethod
