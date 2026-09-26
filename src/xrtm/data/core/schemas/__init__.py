@@ -33,6 +33,7 @@ from xrtm.data.core.schemas.forecast import (
     ReasoningTrace,
     TokenUsage,
 )
+from xrtm.data.core.schemas.market import MarketSnapshot
 from xrtm.data.core.schemas.prior import BetaPrior, PriorState
 from xrtm.data.core.schemas.trade import TradeEvent, TradeWindow
 
@@ -50,6 +51,8 @@ __all__ = [
     "ConfidenceInterval",
     "TokenUsage",
     "ForecastProvenance",
+    # Market schemas
+    "MarketSnapshot",
     # Prior schemas
     "BetaPrior",
     "PriorState",

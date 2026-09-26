@@ -1,4 +1,4 @@
-# xrtm-data v0.4.0
+# xrtm-data v0.5.0
 
 [![PyPI](https://img.shields.io/pypi/v/xrtm-data?style=flat-square)](https://pypi.org/project/xrtm-data/)
 
