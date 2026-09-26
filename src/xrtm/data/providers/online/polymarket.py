@@ -29,15 +29,16 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-from xrtm.data.core.interfaces import DataSource, DataSourceError
+from xrtm.data.core.interfaces import DataSource, DataSourceError, ResolutionSource
 from xrtm.data.core.schemas.forecast import ForecastQuestion, MetadataBase
+from xrtm.data.core.schemas.resolution import ResolvedQuestion
 
 logger = logging.getLogger(__name__)
 
 POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com"
 
 
-class PolymarketSource(DataSource):
+class PolymarketSource(DataSource, ResolutionSource):
     r"""Data source for Polymarket prediction markets.
 
     Fetches open binary markets from the Polymarket Gamma API.
@@ -104,6 +105,80 @@ class PolymarketSource(DataSource):
         except Exception as exc:
             logger.warning(f"Polymarket market {market_id} not found: {exc}")
             return None
+
+    async def fetch_resolved(
+        self, limit: int = 50, *, since: "datetime | None" = None
+    ) -> list[ResolvedQuestion]:
+        r"""Fetch recently closed Polymarket markets with their outcomes.
+
+        A closed market's ``outcomePrices`` converge to ``["1","0"]`` (YES) or
+        ``["0","1"]`` (NO); anything above 0.5 on the first outcome counts as YES.
+        """
+        url = (
+            f"{self.api_base}/markets?"
+            f"limit={min(max(limit * 2, 20), 100)}&closed=true&order=endDate&ascending=false"
+        )
+        data = self._get_json(url)
+        items = data if isinstance(data, list) else data.get("markets", data.get("results", []))
+
+        resolved: list[ResolvedQuestion] = []
+        for item in items:
+            prices = self._coerce_prices(item.get("outcomePrices"))
+            if len(prices) < 2:
+                continue
+            outcome = 1.0 if prices[0] > 0.5 else 0.0
+            resolved_at = self._parse_iso(item.get("endDate") or item.get("closedTime"))
+            if since is not None and resolved_at < since:
+                continue
+
+            market_id = str(item.get("id", ""))
+            resolved.append(
+                ResolvedQuestion(
+                    question_id=f"polymarket-{market_id}",
+                    venue="polymarket",
+                    title=str(item.get("question", ""))[:500],
+                    outcome=outcome,
+                    resolved_at=resolved_at,
+                    url=f"https://polymarket.com/event/{item.get('slug', market_id)}",
+                    metadata=MetadataBase(
+                        source_version="polymarket",
+                        tags=["polymarket", "binary", "prediction-market"],
+                        raw_data={"polymarket_id": market_id, "outcome_prices": prices},
+                    ),
+                )
+            )
+            if len(resolved) >= limit:
+                break
+        return resolved
+
+    @staticmethod
+    def _coerce_prices(raw: Any) -> list[float]:
+        r"""Coerce ``outcomePrices`` (JSON string or list) into floats."""
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (ValueError, TypeError):
+                return []
+        if not isinstance(raw, list):
+            return []
+        prices: list[float] = []
+        for value in raw:
+            try:
+                prices.append(float(value))
+            except (TypeError, ValueError):
+                return []
+        return prices
+
+    @staticmethod
+    def _parse_iso(value: Any) -> datetime:
+        r"""Parse an ISO-8601 timestamp into UTC (now when missing/invalid)."""
+        if value is None:
+            return datetime.now(timezone.utc)
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return datetime.now(timezone.utc)
 
     def _get_json(self, url: str) -> Any:
         r"""Fetch JSON from a URL."""

@@ -34,6 +34,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from xrtm.data.core.schemas.forecast import ForecastQuestion
+from xrtm.data.core.schemas.resolution import ResolvedQuestion
 
 
 class DataSourceError(RuntimeError):
@@ -100,4 +101,35 @@ class DataSource(abc.ABC):
         pass
 
 
-__all__ = ["DataSource", "DataSourceError", "SourceFetchError", "SourceTemporalIntegrityError"]
+class ResolutionSource(abc.ABC):
+    r"""
+    Abstract interface for venues that expose resolved questions (ground truth).
+
+    Implementations return :class:`ResolvedQuestion` objects so evaluation and
+    calibration pipelines can consume outcomes uniformly across venues.
+    """
+
+    @abc.abstractmethod
+    async def fetch_resolved(
+        self, limit: int = 50, *, since: Optional[datetime] = None
+    ) -> List[ResolvedQuestion]:
+        r"""
+        Fetch recently resolved questions with their outcomes.
+
+        Args:
+            limit: Maximum number of resolutions to return.
+            since: Optional lower bound on resolution time (UTC).
+
+        Returns:
+            List of ResolvedQuestion objects.
+        """
+        pass
+
+
+__all__ = [
+    "DataSource",
+    "DataSourceError",
+    "SourceFetchError",
+    "SourceTemporalIntegrityError",
+    "ResolutionSource",
+]
