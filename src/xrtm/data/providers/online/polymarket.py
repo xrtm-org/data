@@ -25,13 +25,13 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
 from xrtm.data.core.interfaces import DataSource, DataSourceError, ResolutionSource
 from xrtm.data.core.schemas.forecast import ForecastQuestion, MetadataBase
 from xrtm.data.core.schemas.resolution import ResolvedQuestion
+from xrtm.data.providers.online._http import fetch_json
 
 logger = logging.getLogger(__name__)
 
@@ -199,13 +199,8 @@ class PolymarketSource(DataSource, ResolutionSource):
             return datetime.now(timezone.utc)
 
     def _get_json(self, url: str) -> Any:
-        r"""Fetch JSON from a URL."""
-        req = urllib.request.Request(url, headers={"User-Agent": "xrtm/0.1"})
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:
-            raise DataSourceError(f"Polymarket API error: {exc}") from exc
+        r"""Fetch JSON from a URL (retry/backoff on transient failures)."""
+        return fetch_json(url, timeout=15, provider="Polymarket")
 
     @staticmethod
     def _to_forecast_question(item: dict[str, Any]) -> ForecastQuestion:

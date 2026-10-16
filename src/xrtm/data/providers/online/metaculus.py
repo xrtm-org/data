@@ -25,15 +25,14 @@ API docs: https://www.metaculus.com/api2/
 
 from __future__ import annotations
 
-import json
 import logging
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
 from xrtm.data.core.interfaces import DataSource, DataSourceError, ResolutionSource
 from xrtm.data.core.schemas.forecast import ForecastQuestion, MetadataBase
 from xrtm.data.core.schemas.resolution import ResolvedQuestion
+from xrtm.data.providers.online._http import fetch_json
 
 logger = logging.getLogger(__name__)
 
@@ -198,16 +197,11 @@ class MetaculusSource(DataSource, ResolutionSource):
             return datetime.now(timezone.utc)
 
     def _get_json(self, url: str) -> dict[str, Any]:
-        r"""Fetch JSON from a URL."""
-        headers = {"User-Agent": "xrtm/0.1"}
+        r"""Fetch JSON from a URL (retry/backoff on transient failures)."""
+        headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Token {self.api_key}"
-        req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:
-            raise DataSourceError(f"Metaculus API error: {exc}") from exc
+        return fetch_json(url, timeout=15, headers=headers, provider="Metaculus")
 
     @staticmethod
     def _to_forecast_question(item: dict[str, Any]) -> ForecastQuestion:

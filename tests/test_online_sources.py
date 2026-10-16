@@ -229,3 +229,51 @@ async def test_polymarket_fetch_questions_fallback_uses_markets(monkeypatch):
     assert len(calls["urls"]) == 2
     assert "/markets?" in calls["urls"][1]
     assert questions and questions[0].id == "polymarket-m1"
+
+
+def test_fetch_json_retries_transient_failures(monkeypatch):
+    from xrtm.data.providers.online import _http
+
+    calls = {"n": 0}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"ok": true}'
+
+    def _urlopen(request, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise OSError("connection reset")
+        return _Response()
+
+    monkeypatch.setattr(_http.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(_http.time, "sleep", lambda _seconds: None)
+
+    assert _http.fetch_json("https://example.test/x") == {"ok": True}
+    assert calls["n"] == 3
+
+
+def test_fetch_json_does_not_retry_client_errors(monkeypatch):
+    import urllib.error
+
+    from xrtm.data import DataSourceError
+    from xrtm.data.providers.online import _http
+
+    calls = {"n": 0}
+
+    def _urlopen(request, timeout=None):
+        calls["n"] += 1
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(_http.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(_http.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(DataSourceError):
+        _http.fetch_json("https://example.test/x")
+    assert calls["n"] == 1
