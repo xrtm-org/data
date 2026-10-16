@@ -194,3 +194,38 @@ async def test_kalshi_fetch_resolved_paginates_cursor(monkeypatch):
 
     assert len(resolved) == 250
     assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_polymarket_fetch_questions_fallback_uses_markets(monkeypatch):
+    from xrtm.data.core import DataSourceError
+
+    source = PolymarketSource()
+    calls = {"urls": []}
+
+    def _get_json(url):
+        calls["urls"].append(url)
+        if "order=volume24hr" in url:
+            raise DataSourceError("volume ordering unsupported")
+        return [
+            {
+                "id": "m1",
+                "question": "Will X happen?",
+                "description": "d",
+                "outcomes": '["Yes", "No"]',
+                "outcomePrices": '["0.6", "0.4"]',
+                "volume": 1000,
+                "liquidity": 500,
+                "endDate": "2026-12-31T00:00:00Z",
+                "slug": "will-x",
+                "closed": False,
+            }
+        ]
+
+    monkeypatch.setattr(source, "_get_json", _get_json)
+
+    questions = await source.fetch_questions(limit=1)
+
+    assert len(calls["urls"]) == 2
+    assert "/markets?" in calls["urls"][1]
+    assert questions and questions[0].id == "polymarket-m1"
