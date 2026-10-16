@@ -33,7 +33,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from xrtm.data.core import DataSource
+from xrtm.data.core import DataSource, SourceTemporalIntegrityError
 from xrtm.data.core.schemas import ForecastQuestion, MetadataBase
 
 REAL_BINARY_CORPUS_ID = "xrtm-real-binary-v1"
@@ -498,6 +498,11 @@ class RealBinaryCorpusSource(DataSource):
         self, query: Optional[str] = None, limit: int = 5, *, snapshot_time: Optional[datetime] = None
     ) -> list[ForecastQuestion]:
         r"""Fetch deterministic corpus questions, optionally filtering title/content text."""
+        if snapshot_time is not None:
+            raise SourceTemporalIntegrityError(
+                "RealBinaryCorpusSource cannot honour snapshot_time; it returns the embedded corpus "
+                "as-is. Use a time-aware source or omit the snapshot."
+            )
         query_lower = query.lower() if query else None
         matches: list[ForecastQuestion] = []
         for question in self._questions:
@@ -512,6 +517,10 @@ class RealBinaryCorpusSource(DataSource):
         self, question_id: str, *, snapshot_time: Optional[datetime] = None
     ) -> Optional[ForecastQuestion]:
         r"""Retrieve a deterministic corpus question by id."""
+        if snapshot_time is not None:
+            raise SourceTemporalIntegrityError(
+                "RealBinaryCorpusSource cannot honour snapshot_time; it returns the embedded corpus as-is."
+            )
         question = self._questions_by_id.get(question_id)
         if question is None:
             return None

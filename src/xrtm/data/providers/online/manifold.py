@@ -163,14 +163,13 @@ class ManifoldSource(DataSource, ResolutionSource):
         market_id = str(item.get("id", ""))
         probability = item.get("probability")
         price_info = f"Current probability: {float(probability)*100:.1f}%" if probability is not None else ""
-        close_time = item.get("closeTime")
 
         return ForecastQuestion(
             id=f"manifold-{market_id}",
             title=str(item.get("question", ""))[:500],
             description=f"Manifold market {market_id}. {price_info}".strip(),
             metadata=MetadataBase(
-                snapshot_time=_parse_ts(close_time) if close_time else datetime.now(timezone.utc),
+                snapshot_time=datetime.now(timezone.utc),  # fetch time; close_time is in the future
                 source_version="manifold",
                 tags=["manifold", "binary", "prediction-market"],
                 raw_data={

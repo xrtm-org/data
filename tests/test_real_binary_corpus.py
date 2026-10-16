@@ -26,6 +26,19 @@ from xrtm.data.corpora import (
 )
 
 
+@pytest.mark.asyncio
+async def test_real_binary_corpus_source_rejects_snapshot_time():
+    from datetime import datetime
+
+    from xrtm.data import SourceTemporalIntegrityError
+
+    source = RealBinaryCorpusSource()
+    with pytest.raises(SourceTemporalIntegrityError):
+        await source.fetch_questions(limit=1, snapshot_time=datetime(2026, 1, 1))
+    with pytest.raises(SourceTemporalIntegrityError):
+        await source.get_question_by_id("any", snapshot_time=datetime(2026, 1, 1))
+
+
 def test_real_binary_corpus_shape_and_resolution_coverage():
     records = load_real_binary_corpus()
 
