@@ -177,7 +177,7 @@ class KalshiSource(DataSource, ResolutionSource):
             title=title[:500] or ticker,
             description=f"{subtitle[:500]}\n\n{price_info}".strip(),
             metadata=MetadataBase(
-                snapshot_time=_parse_ts(item.get("close_time")) if item.get("close_time") else datetime.now(timezone.utc),
+                snapshot_time=datetime.now(timezone.utc),  # fetch time; close_time is in the future
                 source_version="kalshi",
                 tags=["kalshi", "binary", "prediction-market"],
                 raw_data={

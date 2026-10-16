@@ -29,6 +29,28 @@ def test_sources_implement_resolution_interface():
 
 
 @pytest.mark.asyncio
+async def test_manifold_snapshot_time_is_fetch_time(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    source = ManifoldSource()
+    monkeypatch.setattr(
+        source,
+        "_get_json",
+        lambda url: [
+            {"id": "abc", "question": "Will X?", "isResolved": False, "closeTime": 4102444800000},  # year 2100
+        ],
+    )
+
+    questions = await source.fetch_questions(limit=1)
+
+    assert questions
+    snapshot = questions[0].metadata.snapshot_time
+    assert snapshot is not None
+    # Snapshot must be the fetch time, never the (future) close time.
+    assert snapshot <= datetime.now(timezone.utc) + timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
 async def test_manifold_fetch_resolved_maps_yes_no(monkeypatch):
     source = ManifoldSource()
     monkeypatch.setattr(
