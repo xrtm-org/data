@@ -79,8 +79,9 @@ class PolymarketSource(DataSource, ResolutionSource):
         try:
             data = self._get_json(url)
         except DataSourceError:
-            # Gamma API may return a list directly
-            url = f"{self.api_base}/events?limit={min(limit, 50)}&closed=false"
+            # Fallback: same markets endpoint without the volume ordering,
+            # which some Gamma deployments reject.
+            url = f"{self.api_base}/markets?limit={min(limit, 100)}&closed=false"
             data = self._get_json(url)
 
         # Gamma API may wrap in "markets" key or return list directly
