@@ -80,8 +80,8 @@ class PolymarketSource(DataSource, ResolutionSource):
             data = self._get_json(url)
         except DataSourceError:
             # Fallback: same markets endpoint without the volume ordering,
-            # which some Gamma deployments reject.
-            url = f"{self.api_base}/markets?limit={min(limit, 100)}&closed=false"
+            # which some Gamma deployments reject. Pagination still applies.
+            url = f"{self.api_base}/markets?limit={min(limit, 100)}&offset={offset}&closed=false"
             data = self._get_json(url)
 
         # Gamma API may wrap in "markets" key or return list directly

@@ -277,3 +277,53 @@ def test_fetch_json_does_not_retry_client_errors(monkeypatch):
     with pytest.raises(DataSourceError):
         _http.fetch_json("https://example.test/x")
     assert calls["n"] == 1
+
+
+def test_fetch_json_does_not_retry_unparseable_bodies(monkeypatch):
+    from xrtm.data.providers.online import _http
+
+    calls = {"n": 0}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b"<html>maintenance</html>"
+
+    def _urlopen(request, timeout=None):
+        calls["n"] += 1
+        return _Response()
+
+    monkeypatch.setattr(_http.urllib.request, "urlopen", _urlopen)
+    monkeypatch.setattr(_http.time, "sleep", lambda _seconds: None)
+
+    from xrtm.data import DataSourceError
+
+    with pytest.raises(DataSourceError, match="unparseable"):
+        _http.fetch_json("https://example.test/x")
+    assert calls["n"] == 1  # deterministic parse failure: no retries
+
+
+@pytest.mark.asyncio
+async def test_polymarket_fallback_keeps_offset(monkeypatch):
+    from xrtm.data.core import DataSourceError
+
+    source = PolymarketSource()
+    calls = {"urls": []}
+
+    def _get_json(url):
+        calls["urls"].append(url)
+        if "order=volume24hr" in url:
+            raise DataSourceError("volume ordering unsupported")
+        return []
+
+    monkeypatch.setattr(source, "_get_json", _get_json)
+
+    await source.fetch_questions(limit=5, offset=20)
+
+    assert len(calls["urls"]) == 2
+    assert "offset=20" in calls["urls"][1]
