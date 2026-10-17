@@ -63,6 +63,11 @@ def fetch_json(
             last_error = exc
             if exc.code not in RETRYABLE_STATUS or attempt >= retries:
                 raise DataSourceError(f"{provider} API error: {exc}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            # The body was read in full but does not parse: deterministic, so
+            # retrying only multiplies the damage (e.g. an HTML maintenance
+            # page served with HTTP 200).
+            raise DataSourceError(f"{provider} API returned unparseable JSON: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 - connection/timeout errors are transient
             last_error = exc
             if attempt >= retries:
