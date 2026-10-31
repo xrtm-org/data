@@ -125,7 +125,7 @@ class PolymarketSource(DataSource, ResolutionSource):
         for page in range(max(1, max_pages)):
             url = (
                 f"{self.api_base}/markets?"
-                f"limit={page_size}&offset={page * page_size}&closed=true&order=endDate&ascending=false"
+                f"limit={page_size}&offset={page * page_size}&closed=true&order=closedTime&ascending=false"
             )
             data = self._get_json(url)
             items = data if isinstance(data, list) else data.get("markets", data.get("results", []))
@@ -137,7 +137,7 @@ class PolymarketSource(DataSource, ResolutionSource):
                 prices = self._coerce_prices(item.get("outcomePrices"))
                 if len(prices) < 2:
                     continue
-                resolved_at = self._parse_iso(item.get("endDate") or item.get("closedTime"))
+                resolved_at = self._parse_iso(item.get("closedTime") or item.get("endDate"))
                 if since is not None and resolved_at < since:
                     stop = True
                     continue
