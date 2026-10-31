@@ -327,3 +327,31 @@ async def test_polymarket_fallback_keeps_offset(monkeypatch):
 
     assert len(calls["urls"]) == 2
     assert "offset=20" in calls["urls"][1]
+
+
+@pytest.mark.asyncio
+async def test_polymarket_fetch_resolved_orders_by_closed_time(monkeypatch):
+    from datetime import datetime, timezone
+
+    source = PolymarketSource()
+    urls = []
+
+    def fake(url: str):
+        urls.append(url)
+        return [
+            {
+                "id": "5944173",
+                "question": "Will C?",
+                "outcomePrices": '["1", "0"]',
+                # A far-future end date must not be used as the resolution date.
+                "endDate": "2029-01-19T23:59:00Z",
+                "closedTime": "2026-10-31 22:41:36.295871+00",
+            }
+        ]
+
+    monkeypatch.setattr(source, "_get_json", fake)
+    resolved = await source.fetch_resolved(limit=10, since=datetime(2026, 10, 1, tzinfo=timezone.utc))
+
+    assert "order=closedTime" in urls[0]
+    assert resolved[0].resolved_at.year == 2026
+    assert resolved[0].resolved_at.month == 10
